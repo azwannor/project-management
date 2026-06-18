@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  photo     String?
+  jobDesk   String
+  role      String   // "Admin" | "Staff"
+  tasks     Task[]
+  timeLogs  TimeLog[]
+  supportTickets SupportTicket[]
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  objective   String?
+  members     String?
+  startDate   DateTime
+  endDate     DateTime
+  status      String   // "Not Started" | "Ongoing" | "Completed"
+  tasks       Task[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  parentId    String?  // Untuk hierarki task
+  projectId   String?
+  userId      String
+  title       String
+  startDate   DateTime
+  endDate     DateTime
+  priority    String   // "Butuh Cepat" | "Normal"
+  issue         String?  // Kendala
+  solution      String?  // Solusi
+  documentation String?  // Link GDrive/OneDrive
+  executor      String?  // Penanggung jawab task
+  status        String   // "Not Started" | "Ongoing" | "Completed"
+  attachment    String?
+  
+  project     Project? @relation(fields: [projectId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+  parentTask  Task?    @relation("TaskHierarchy", fields: [parentId], references: [id])
+  subTasks    Task[]   @relation("TaskHierarchy")
+  timeLogs    TimeLog[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TimeLog {
+  id          String   @id @default(uuid())
+  taskId      String
+  userId      String
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?     // Total durasi dalam detik
+
+  task        Task     @relation(fields: [taskId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  userId      String
+  taskName    String
+  supportType String
+  module      String
+  startDate   DateTime
+  endDate     DateTime
+  issue       String?
+  solution    String?
+  status      String
+  attachment  String?
+
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

@@ -1,0 +1,193 @@
+@import 'tailwindcss';
+
+:root {
+  --background: 220 20% 97%;
+  --foreground: 222 47% 11%;
+  
+  --primary: 221 83% 53%;
+  --primary-foreground: 210 40% 98%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+
+  --ring: 221 83% 53%;
+
+  --radius: 1rem;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+
+  --ring: 224.3 76.3% 48%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  /* Premium animated gradient background */
+  background: linear-gradient(-45deg, #e0eafc, #cfdef3, #a1c4fd, #c2e9fb);
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+}
+
+.dark body {
+  background: linear-gradient(-45deg, #0f2027, #203a43, #2c5364, #121212);
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+}
+
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.05);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px 0 rgba(31, 38, 135, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* Base button styles */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 4px 14px 0 rgba(0, 118, 255, 0.39);
+}
+
+.btn-primary:hover {
+  background: rgba(0, 118, 255, 0.9);
+  box-shadow: 0 6px 20px rgba(0, 118, 255, 0.23);
+  transform: translateY(-1px);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.dark .glass-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .glass-card:hover {
+  background: rgba(30, 41, 59, 0.8);
+  box-shadow: 0 10px 20px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ════════ React DatePicker Overrides ════════ */
+.react-datepicker {
+  font-family: 'Inter', sans-serif !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04) !important;
+  overflow: hidden;
+}
+.react-datepicker__header {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  padding-top: 12px !important;
+}
+.react-datepicker__current-month {
+  font-size: 0.875rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+}
+.react-datepicker__day-name {
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  color: #94a3b8 !important;
+}
+.react-datepicker__day {
+  font-size: 0.8rem !important;
+  border-radius: 0.5rem !important;
+  transition: all 0.15s ease !important;
+}
+.react-datepicker__day:hover {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+}
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background: linear-gradient(135deg, #3b82f6, #6366f1) !important;
+  color: white !important;
+  font-weight: 700 !important;
+}
+.react-datepicker__day--today {
+  font-weight: 700 !important;
+  color: #2563eb !important;
+}
+.react-datepicker__navigation-icon::before {
+  border-color: #64748b !important;
+}
+.react-datepicker__triangle {
+  display: none !important;
+}
