@@ -53,7 +53,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
         <p className="text-slate-500 mt-1">Manage your profile and account preferences</p>
       </div>
 
-      {currentUser.role === "Admin" && (
+      {currentUser.role?.toLowerCase() === "admin" && (
         <div className="flex border-b border-gray-200 mb-6 gap-6">
           <button
             onClick={() => setActiveTab("profile")}
@@ -144,7 +144,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
         </div>
       )}
 
-      {activeTab === "users" && currentUser.role === "Admin" && (
+      {activeTab === "users" && currentUser.role?.toLowerCase() === "admin" && (
         <UserManagement users={allUsers} inputClass={inputClass} />
       )}
     </div>
@@ -270,7 +270,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 <td className="px-6 py-3 text-gray-600">{u.email}</td>
                 <td className="px-6 py-3 text-gray-600">{u.jobDesk}</td>
                 <td className="px-6 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${u.role === 'Admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${u.role?.toLowerCase() === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                     {u.role}
                   </span>
                 </td>

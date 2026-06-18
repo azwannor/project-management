@@ -24,7 +24,7 @@ export default async function SettingsPage() {
 
   // Fetch all users for admin
   let allUsers: any[] = [];
-  if (currentUser.role === "Admin") {
+  if (currentUser.role?.toLowerCase() === "admin") {
     allUsers = await prisma.user.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, createdAt: true },
