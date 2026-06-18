@@ -1,8 +1,19 @@
+import { cookies } from "next/headers";
+import { decrypt } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import ProjectDashboardClient from "@/components/views/ProjectDashboardClient";
 import { Suspense } from "react";
 
 export default async function ProjectsPage() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const session = await decrypt(sessionCookie);
+
+  if (!session || !session.userId) {
+    redirect("/login");
+  }
+
   // Server-side data fetching for project tasks
   const projects = await prisma.project.findMany({
     include: { tasks: true }
