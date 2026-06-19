@@ -22,11 +22,40 @@ export async function PATCH(
     if (body.endDate !== undefined) updateData.endDate = new Date(body.endDate);
     if (body.projectId !== undefined) updateData.projectId = body.projectId || null;
     if (body.executor !== undefined) updateData.executor = body.executor || null;
+    if (body.parentId !== undefined) updateData.parentId = body.parentId;
+
+    const existingTask = await prisma.task.findUnique({ where: { id } });
 
     const updatedTask = await prisma.task.update({
       where: { id },
       data: updateData,
     });
+
+    if (body.executor !== undefined && existingTask && existingTask.executor !== body.executor) {
+      if (body.executor) {
+        const executors = body.executor.split(",").map((e: string) => e.trim()).filter(Boolean);
+        const existingExecutors = existingTask.executor ? existingTask.executor.split(",").map((e: string) => e.trim()) : [];
+        
+        for (const executorName of executors) {
+          if (!existingExecutors.includes(executorName)) {
+            const executorUser = await prisma.user.findFirst({
+              where: { name: executorName }
+            });
+            if (executorUser) {
+              await prisma.notification.create({
+                data: {
+                  userId: executorUser.id,
+                  title: "Tugas Dialokasikan",
+                  message: `Anda ditugaskan pada task: "${updatedTask.title}"`,
+                  type: "ASSIGNMENT",
+                  link: "/"
+                }
+              });
+            }
+          }
+        }
+      }
+    }
 
     return NextResponse.json(updatedTask);
   } catch (error: any) {

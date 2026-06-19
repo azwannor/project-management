@@ -6,13 +6,15 @@ import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ModernSelect from "../common/ModernSelect";
-import { Paperclip } from "lucide-react";
+import { Paperclip, MessageSquare } from "lucide-react";
+import CommentsDrawer from "../common/CommentsDrawer";
 
 export default function SupportClient({ tickets = [], currentUser }: { tickets: any[], currentUser: any }) {
   const [addingTicket, setAddingTicket] = useState(false);
   const [editingTicket, setEditingTicket] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'my-logs' | 'team-logs'>('my-logs');
+  const [activeCommentTicket, setActiveCommentTicket] = useState<{id: string, title: string} | null>(null);
   
   const defaultTaskData = {
     taskName: "",
@@ -24,6 +26,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
     issue: "",
     solution: "",
     status: "Done",
+    priority: "Normal",
     attachment: ""
   };
 
@@ -98,6 +101,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
           issue: editTaskData.issue,
           solution: editTaskData.solution,
           status: editTaskData.status,
+          priority: editTaskData.priority,
           attachment: editTaskData.attachment
         })
       });
@@ -131,6 +135,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
       endDate: new Date(ticket.endDate),
       module: isCustomModule ? "Lainnya" : ticket.module,
       customModule: isCustomModule ? ticket.module : "",
+      priority: ticket.priority || "Normal",
       attachment: ticket.attachment || ""
     });
   };
@@ -159,6 +164,22 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
     { value: "Ongoing", label: "Ongoing" },
     { value: "Suspended", label: "Suspended" },
   ];
+
+  const priorityOptions = [
+    { value: "Low", label: "Low" },
+    { value: "Normal", label: "Normal" },
+    { value: "High", label: "High" },
+    { value: "URGENT", label: "URGENT" }
+  ];
+
+  const renderPriority = (priority: string) => {
+    switch (priority) {
+      case "URGENT": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 animate-pulse">URGENT</span>;
+      case "High": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold border border-orange-200">High</span>;
+      case "Low": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">Low</span>;
+      default: return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-200">Normal</span>;
+    }
+  };
 
   const renderStatus = (status: string) => {
     switch (status) {
@@ -368,7 +389,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
           <div className="min-w-[1200px] flex-1 flex flex-col">
             {/* Table Header */}
           <div className="grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10"
-            style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 3fr 3fr 0.8fr 0.5fr' }}>
+            style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
             <div>Start Time</div>
             <div>End Time</div>
             <div>User & Role</div>
@@ -378,6 +399,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
             <div>Issue</div>
             <div>Solution</div>
             <div>Status</div>
+            <div>Priority</div>
             <div className="text-right"></div>
           </div>
           
@@ -396,7 +418,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
             {displayedTickets.length > 0 ? (
               displayedTickets.map((ticket, i) => (
                 <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`grid gap-3 items-center px-4 py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b border-gray-100/80 cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'}`}
-                  style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 3fr 3fr 0.8fr 0.5fr' }}>
+                  style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
                   
                   <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.startDate)}</div>
                   <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.endDate)}</div>
@@ -412,8 +434,19 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                   <div className="text-xs text-gray-700 break-words">{ticket.issue || "-"}</div>
                   <div className="text-xs text-gray-700 break-words">{ticket.solution || "-"}</div>
                   <div>{renderStatus(ticket.status)}</div>
+                  <div>{renderPriority(ticket.priority)}</div>
 
-                  <div className="flex justify-end opacity-0 hover:opacity-100">
+                  <div className="flex justify-end gap-1 opacity-0 hover:opacity-100">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setActiveCommentTicket({id: ticket.id, title: ticket.taskName}); }} 
+                      className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
+                      title="Diskusi Ticket"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {ticket.comments?.[0] && (!ticket.commentReadStatuses?.[0] || new Date(ticket.comments[0].createdAt) > new Date(ticket.commentReadStatuses[0].lastReadAt)) && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                      )}
+                    </button>
                     <button onClick={(e) => handleDeleteTicket(ticket.id, e)} className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition-all" title="Delete Log">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -494,9 +527,15 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                   <input type="text" placeholder="Action taken..." className={inputClass} value={newTaskData.solution} onChange={(e) => setNewTaskData({...newTaskData, solution: e.target.value})} />
                 </div>
                 
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-                  <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+                    <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
+                    <ModernSelect options={priorityOptions} value={newTaskData.priority} onChange={(val) => setNewTaskData({...newTaskData, priority: val})} className="w-full" />
+                  </div>
                 </div>
                 
                 <div>
@@ -592,9 +631,15 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                   <input type="text" placeholder="Action taken..." className={inputClass} value={editTaskData.solution || ""} onChange={(e) => setEditTaskData({...editTaskData, solution: e.target.value})} />
                 </div>
                 
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-                  <ModernSelect options={statusOptions} value={editTaskData.status} onChange={(val) => setEditTaskData({...editTaskData, status: val})} className="w-full" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+                    <ModernSelect options={statusOptions} value={editTaskData.status} onChange={(val) => setEditTaskData({...editTaskData, status: val})} className="w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
+                    <ModernSelect options={priorityOptions} value={editTaskData.priority} onChange={(val) => setEditTaskData({...editTaskData, priority: val})} className="w-full" />
+                  </div>
                 </div>
 
                 <div>
@@ -625,6 +670,17 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
             </div>
           </div>
         </div>
+      )}
+
+      {activeCommentTicket && (
+        <CommentsDrawer 
+          isOpen={!!activeCommentTicket} 
+          onClose={() => setActiveCommentTicket(null)} 
+          entityId={activeCommentTicket.id} 
+          entityType="supportTicket" 
+          entityTitle={activeCommentTicket.title} 
+          currentUserId={currentUser?.id} 
+        />
       )}
     </div>
     </div>

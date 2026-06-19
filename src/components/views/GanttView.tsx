@@ -64,7 +64,13 @@ const priorityColors: Record<string, string> = {
 const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all";
 
 // ─── Main Component ───
-export default function GanttView({ tasks, projects = [], users = [] }: { tasks: any[]; projects?: any[]; users?: any[] }) {
+interface GanttViewProps {
+  tasks: any[];
+  projects: any[];
+  users?: any[];
+}
+
+export default function GanttView({ tasks, projects = [], users = [] }: GanttViewProps) {
   const router = useRouter();
   const timelineRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -94,7 +100,12 @@ export default function GanttView({ tasks, projects = [], users = [] }: { tasks:
     } else {
       const project = projects.find(p => p.id === projectId);
       if (project && project.members) {
-        rawOpts = project.members.split(", ").map((m: string) => ({ value: m, label: m }));
+        const validUserNames = users?.map((u: any) => u.name) || [];
+        rawOpts = project.members
+          .split(", ")
+          .filter(Boolean)
+          .filter((m: string) => validUserNames.includes(m))
+          .map((m: string) => ({ value: m, label: m }));
       }
     }
     const seen = new Set<string>();

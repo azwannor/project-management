@@ -15,25 +15,40 @@ export default async function ProjectsPage() {
   }
 
   // Server-side data fetching for project tasks
-  const projects = await prisma.project.findMany({
-    include: { tasks: true }
-  });
-  
-  const tasks = await prisma.task.findMany({
-    where: {
-      projectId: { not: null }
-    },
-    include: { user: true, project: true }
-  });
-
-  const users = await prisma.user.findMany({
-    orderBy: { name: 'asc' }
-  });
+  const [projects, tasks, users, currentUser] = await Promise.all([
+    prisma.project.findMany({
+      include: { tasks: true }
+    }),
+    prisma.task.findMany({
+      where: {
+        projectId: { not: null }
+      },
+      include: { 
+        user: true, 
+        project: true,
+        comments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        },
+        commentReadStatuses: {
+          where: { userId: session.userId as string }
+        }
+      }
+    }),
+    prisma.user.findMany({
+      orderBy: { name: 'asc' }
+    }),
+    prisma.user.findUnique({
+      where: { id: session.userId as string },
+      select: { id: true, name: true, photo: true }
+    })
+  ]);
 
   const initialData = {
     projects,
     tasks,
-    users
+    users,
+    currentUser
   };
 
   return (

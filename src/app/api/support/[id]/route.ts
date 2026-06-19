@@ -16,10 +16,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const data = await req.json();
 
+    const existingTicket = await prisma.supportTicket.findUnique({
+      where: { id },
+      include: { user: { select: { name: true } } }
+    });
+
     const ticket = await prisma.supportTicket.update({
       where: { id },
       data
     });
+
+    if (existingTicket && existingTicket.priority !== "URGENT" && ticket.priority === "URGENT") {
+      const reporter = existingTicket.user?.name || "Unknown";
+      const message = `🚨 <b>URGENT TICKET DIUBAH</b> 🚨\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${reporter}\n<b>Modul:</b> ${ticket.module}\n\n<i>Status tiket telah diubah menjadi URGENT. Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
+      
+      const { sendTelegramMessage } = await import("@/lib/telegram");
+      await sendTelegramMessage(message);
+    }
 
     return NextResponse.json(ticket);
   } catch (error) {

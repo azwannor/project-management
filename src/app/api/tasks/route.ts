@@ -51,6 +51,27 @@ export async function POST(request: NextRequest) {
         executor: body.executor || null,
       },
     });
+
+    if (body.executor) {
+      const executors = body.executor.split(",").map((e: string) => e.trim()).filter(Boolean);
+      for (const executorName of executors) {
+        const executorUser = await prisma.user.findFirst({
+          where: { name: executorName }
+        });
+        if (executorUser) {
+          await prisma.notification.create({
+            data: {
+              userId: executorUser.id,
+              title: "Tugas Baru",
+              message: `Anda telah ditugaskan pada task baru: "${newTask.title}"`,
+              type: "ASSIGNMENT",
+              link: "/"
+            }
+          });
+        }
+      }
+    }
+
     return NextResponse.json(newTask, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

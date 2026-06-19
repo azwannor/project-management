@@ -43,6 +43,7 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
   const projects = initialData.projects || [];
   const allTasks = initialData.tasks || [];
   const users = initialData.users || [];
+  const currentUser = initialData.currentUser || {};
 
   const filteredTasks = selectedProjectId === "all" 
     ? allTasks 
@@ -105,7 +106,7 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {projects.length > 0 && activeTab !== "project" && (
+          {activeTab === "project" && projects.length > 0 && (
             <select
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
               value={selectedProjectId}
@@ -117,12 +118,14 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
               ))}
             </select>
           )}
-          <button 
-            onClick={() => setIsCreatingProject(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-600/20"
-          >
-            <Plus className="w-4 h-4" /> New Project
-          </button>
+          {activeTab === "project" && (
+            <button 
+              onClick={() => setIsCreatingProject(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-600/20"
+            >
+              <Plus className="w-4 h-4" /> New Project
+            </button>
+          )}
         </div>
       </div>
 
@@ -148,9 +151,9 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
         
         <div className="flex-1 overflow-auto bg-slate-50/50">
           {activeTab === "project" && <ProjectListView projects={projects} users={users} />}
-          {activeTab === "table" && <TableView tasks={filteredTasks} users={users} projects={projects} />}
-          {activeTab === "kanban" && <KanbanView tasks={filteredTasks} users={users} projects={projects} />}
-          {activeTab === "gantt" && <GanttView tasks={filteredTasks} projects={projects} />}
+          {activeTab === "table" && <TableView tasks={filteredTasks} users={users} projects={projects} currentUser={currentUser} />}
+          {activeTab === "kanban" && <KanbanView tasks={filteredTasks} users={users} projects={projects} currentUser={currentUser} />}
+          {activeTab === "gantt" && <GanttView tasks={filteredTasks} projects={projects} users={users} />}
           {activeTab === "calendar" && <CalendarView tasks={filteredTasks} projects={projects} />}
         </div>
       </div>

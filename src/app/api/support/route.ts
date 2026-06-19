@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { taskName, supportType, module, startDate, endDate, issue, solution, status, attachment } = body;
+    const { taskName, supportType, module, startDate, endDate, issue, solution, status, attachment, priority } = body;
 
     const ticket = await prisma.supportTicket.create({
       data: {
@@ -51,9 +51,20 @@ export async function POST(req: Request) {
         issue: issue || null,
         solution: solution || null,
         status: status || "Ongoing",
+        priority: priority || "Normal",
         attachment: attachment || null
       }
     });
+
+    if (ticket.priority === "URGENT") {
+      const user = await prisma.user.findUnique({ where: { id: session.userId as string } });
+      const reporter = user?.name || "Unknown";
+      
+      const message = `🚨 <b>URGENT TICKET MASUK</b> 🚨\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${reporter}\n<b>Modul:</b> ${ticket.module}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
+      
+      const { sendTelegramMessage } = await import("@/lib/telegram");
+      await sendTelegramMessage(message);
+    }
 
     return NextResponse.json(ticket);
   } catch (error) {

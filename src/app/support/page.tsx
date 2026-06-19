@@ -14,17 +14,27 @@ export default async function SupportPage() {
     redirect("/login");
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.userId as string },
-    select: { id: true, name: true, jobDesk: true, role: true }
-  });
+  const [currentUser, tickets] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.userId as string },
+      select: { id: true, name: true, jobDesk: true, role: true }
+    }),
+    prisma.supportTicket.findMany({
+      include: { 
+        user: true,
+        comments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        },
+        commentReadStatuses: {
+          where: { userId: session.userId as string }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+  ]);
 
   if (!currentUser) redirect("/login");
-
-  const tickets = await prisma.supportTicket.findMany({
-    include: { user: true },
-    orderBy: { createdAt: 'desc' }
-  });
 
   return (
     <div className="min-h-screen p-6 md:p-10 text-gray-900">

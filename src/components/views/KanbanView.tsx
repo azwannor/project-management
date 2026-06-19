@@ -24,8 +24,10 @@ import {
   FileText,
   PauseCircle,
   X,
-  UserCircle
+  UserCircle,
+  MessageSquare
 } from "lucide-react";
+import CommentsDrawer from "../common/CommentsDrawer";
 
 interface KanbanTask {
   id: string;
@@ -39,6 +41,8 @@ interface KanbanTask {
   projectId?: string | null;
   parentId?: string | null;
   executor?: string | null;
+  comments?: any[];
+  commentReadStatuses?: any[];
 }
 
 const COLUMNS = [
@@ -78,12 +82,13 @@ const STATUS_OPTIONS = [
 
 const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all";
 
-export default function KanbanView({ tasks, projects = [], users = [] }: { tasks: any[]; projects?: any[]; users?: any[] }) {
+export default function KanbanView({ tasks, projects = [], users = [], currentUser }: { tasks: any[]; projects?: any[]; users?: any[], currentUser?: any }) {
   const router = useRouter();
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [activeCommentTask, setActiveCommentTask] = useState<{id: string, title: string} | null>(null);
   const dragCounter = useRef<Record<string, number>>({});
 
   // ─── Detail / Edit Modal State ───
@@ -103,7 +108,12 @@ export default function KanbanView({ tasks, projects = [], users = [] }: { tasks
     } else {
       const project = projects.find(p => p.id === projectId);
       if (project && project.members) {
-        rawOpts = project.members.split(", ").map((m: string) => ({ value: m, label: m }));
+        const validUserNames = users?.map((u: any) => u.name) || [];
+        rawOpts = project.members
+          .split(", ")
+          .filter(Boolean)
+          .filter((m: string) => validUserNames.includes(m))
+          .map((m: string) => ({ value: m, label: m }));
       }
     }
     const uniqueOpts = [];
@@ -383,7 +393,17 @@ export default function KanbanView({ tasks, projects = [], users = [] }: { tasks
                             <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">Urgent</span>
                           )}
                         </div>
-                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={() => setActiveCommentTask({id: task.id, title: task.title})}
+                            className="p-1 text-gray-300 hover:text-indigo-500 rounded-md hover:bg-indigo-50 transition-colors opacity-0 group-hover:opacity-100 relative" 
+                            title="Diskusi Task"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                            {task.comments?.[0] && (!task.commentReadStatuses?.[0] || new Date(task.comments[0].createdAt) > new Date(task.commentReadStatuses[0].lastReadAt)) && (
+                              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                            )}
+                          </button>
                           <button onClick={() => setOpenMenuId(openMenuId === task.id ? null : task.id)}
                             className="p-1 text-gray-300 hover:text-gray-500 rounded-md hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100">
                             <MoreHorizontal className="w-4 h-4" />
@@ -592,6 +612,17 @@ export default function KanbanView({ tasks, projects = [], users = [] }: { tasks
             </div>
           </div>
         </div>
+      )}
+
+      {activeCommentTask && (
+        <CommentsDrawer 
+          isOpen={!!activeCommentTask} 
+          onClose={() => setActiveCommentTask(null)} 
+          entityId={activeCommentTask.id} 
+          entityType="task" 
+          entityTitle={activeCommentTask.title} 
+          currentUserId={currentUser?.id} 
+        />
       )}
     </div>
   );

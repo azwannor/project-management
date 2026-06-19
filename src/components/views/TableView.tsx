@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle } from "lucide-react";
+import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ModernSelect from "../common/ModernSelect";
+import CommentsDrawer from "../common/CommentsDrawer";
 
 // ─── Inline Editable Cell Components ───
 
@@ -310,10 +311,17 @@ function EditableUrl({ value, taskId, onSave }: { value: string; taskId: string;
 
 // ─── Main TableView ───
 
-export default function TableView({ tasks, projects = [], selectedProjectId = "all", users = [] }: { tasks: any[], projects?: any[], selectedProjectId?: string, users?: any[] }) {
+export default function TableView({ tasks, projects = [], selectedProjectId = "all", users = [], currentUser }: { tasks: any[], projects?: any[], selectedProjectId?: string, users?: any[], currentUser?: any }) {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [activeCommentTask, setActiveCommentTask] = useState<{id: string, title: string} | null>(null);
   const [addingSubtask, setAddingSubtask] = useState<string | null>(null);
   const [addingRootTask, setAddingRootTask] = useState(false);
+  
+  // Drag and Drop State
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
+
   const [newTaskData, setNewTaskData] = useState<{
     title: string;
     startDate: Date;
@@ -338,6 +346,33 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
 
   const toggleRow = (taskId: string) => {
     setExpandedRows(prev => ({ ...prev, [taskId]: !prev[taskId] }));
+  };
+
+  const handleMoveTask = async (taskId: string, targetParentId: string | null, targetProjectId?: string | null) => {
+    setIsMoving(true);
+    try {
+      const payload: any = { parentId: targetParentId };
+      if (targetProjectId !== undefined && targetProjectId !== "unassigned") {
+        payload.projectId = targetProjectId;
+      } else if (targetProjectId === "unassigned") {
+        payload.projectId = null;
+      }
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (targetParentId) {
+        setExpandedRows(prev => ({ ...prev, [targetParentId]: true }));
+      }
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsMoving(false);
+      setDraggedTaskId(null);
+      setDragOverTargetId(null);
+    }
   };
 
   // ─── Inline Update Handler ───
@@ -415,7 +450,12 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
     } else {
       const project = projects.find(p => p.id === projectId);
       if (project && project.members) {
-        rawOpts = project.members.split(", ").map((m: string) => ({ value: m, label: m }));
+        const validUserNames = users?.map((u: any) => u.name) || [];
+        rawOpts = project.members
+          .split(", ")
+          .filter(Boolean)
+          .filter((m: string) => validUserNames.includes(m))
+          .map((m: string) => ({ value: m, label: m }));
       }
     }
     const uniqueOpts = [];
@@ -432,11 +472,11 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
   const safeTasks = tasks || [];
   const rootTasks = safeTasks.filter(t => !t.parentId);
   
-  const tasksByProject: Record<string, { projectName: string; tasks: any[] }> = {};
+  const tasksByProject: Record<string, { projectId: string; projectName: string; tasks: any[] }> = {};
   rootTasks.forEach(task => {
     const projectId = task.projectId || "unassigned";
     const projectName = task.project?.name || "No Project";
-    if (!tasksByProject[projectId]) tasksByProject[projectId] = { projectName, tasks: [] };
+    if (!tasksByProject[projectId]) tasksByProject[projectId] = { projectId, projectName, tasks: [] };
     tasksByProject[projectId].tasks.push(task);
   });
   
@@ -468,11 +508,44 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
     const children = getChildren(task.id);
     const hasChildren = children.length > 0;
     const isExpanded = expandedRows[task.id];
+    const isDragged = draggedTaskId === task.id;
+    const isDropTarget = dragOverTargetId === task.id && draggedTaskId !== task.id;
 
     return (
-      <div key={task.id}>
+      <div 
+        key={task.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("taskId", task.id);
+          setDraggedTaskId(task.id);
+        }}
+        onDragOver={(e) => {
+          if (draggedTaskId && draggedTaskId !== task.id) {
+            e.preventDefault();
+            setDragOverTargetId(task.id);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (dragOverTargetId === task.id) {
+            setDragOverTargetId(null);
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const droppedTaskId = e.dataTransfer.getData("taskId");
+          if (droppedTaskId && droppedTaskId !== task.id) {
+            handleMoveTask(droppedTaskId, task.id);
+          }
+          setDragOverTargetId(null);
+        }}
+        onDragEnd={() => {
+          setDraggedTaskId(null);
+          setDragOverTargetId(null);
+        }}
+        className={isDragged ? "opacity-50" : ""}
+      >
         <div 
-          className={`grid gap-3 items-center px-4 py-3 border-b border-gray-100/80 hover:bg-blue-50/30 transition-colors duration-150 ${level === 0 ? 'bg-white' : 'bg-gray-50/20'}`} 
+          className={`grid gap-3 items-center px-4 py-3 border-b transition-colors duration-150 ${level === 0 ? 'bg-white' : 'bg-gray-50/20'} ${isDropTarget ? 'border-b-2 border-b-blue-500 bg-blue-50/60' : 'border-gray-100/80 hover:bg-blue-50/30'}`} 
           style={{ gridTemplateColumns: 'minmax(220px, 4fr) 2fr 2fr 2fr 2fr 2fr 1.5fr 2fr' }}
         >
           {/* Task Name - Editable */}
@@ -489,6 +562,16 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
               <EditableText value={task.title} taskId={task.id} field="title" onSave={handleInlineUpdate} />
             </div>
             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button 
+                onClick={() => setActiveCommentTask({id: task.id, title: task.title})} 
+                className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
+                title="Diskusi Task"
+              >
+                <MessageSquare className="w-3 h-3" />
+                {task.comments?.[0] && (!task.commentReadStatuses?.[0] || new Date(task.comments[0].createdAt) > new Date(task.commentReadStatuses[0].lastReadAt)) && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                )}
+              </button>
               <button onClick={() => setAddingSubtask(task.id)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all" title="Add Subtask">
                 <Plus className="w-3 h-3" />
               </button>
@@ -733,8 +816,29 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
             
             {rootTasks.length > 0 ? (
               Object.values(tasksByProject).map((group, idx) => (
-                <div key={group.projectName}>
-                  <div className={`flex items-center gap-3 px-5 py-2.5 bg-slate-50 border-b border-slate-200 ${idx > 0 ? 'border-t-2 border-t-slate-200 mt-1' : ''}`}>
+                <div key={group.projectId}>
+                  <div 
+                    className={`flex items-center gap-3 px-5 py-2.5 bg-slate-50 border-b transition-all duration-150 ${idx > 0 ? 'border-t-2 border-t-slate-200 mt-1' : ''} ${dragOverTargetId === `project-${group.projectId}` ? 'border-b-2 border-b-blue-500 bg-blue-100/50' : 'border-slate-200'}`}
+                    onDragOver={(e) => {
+                      if (draggedTaskId) {
+                        e.preventDefault();
+                        setDragOverTargetId(`project-${group.projectId}`);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      if (dragOverTargetId === `project-${group.projectId}`) {
+                        setDragOverTargetId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const droppedTaskId = e.dataTransfer.getData("taskId");
+                      if (droppedTaskId) {
+                        handleMoveTask(droppedTaskId, null, group.projectId);
+                      }
+                      setDragOverTargetId(null);
+                    }}
+                  >
                     <div className="w-1 h-5 rounded-full bg-gradient-to-b from-blue-500 to-indigo-500" />
                     <span className="font-semibold text-slate-700 text-sm">{group.projectName}</span>
                     <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm uppercase tracking-wider">
@@ -754,6 +858,17 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           </div>
         </div>
       </div>
+      
+      {activeCommentTask && (
+        <CommentsDrawer 
+          isOpen={!!activeCommentTask} 
+          onClose={() => setActiveCommentTask(null)} 
+          entityId={activeCommentTask.id} 
+          entityType="task" 
+          entityTitle={activeCommentTask.title} 
+          currentUserId={currentUser?.id} 
+        />
+      )}
     </div>
   );
 }

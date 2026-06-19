@@ -60,7 +60,7 @@ function SidebarContent() {
       )}
 
       {/* Sidebar Container */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 h-screen flex flex-col glass-panel rounded-none border-y-0 border-l-0 border-r border-white/20 bg-white/30 backdrop-blur-xl shrink-0 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} shadow-2xl md:shadow-none`}>
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 h-screen flex flex-col glass-panel !rounded-none border-y-0 border-l-0 border-r border-white/20 bg-white/30 backdrop-blur-xl shrink-0 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} shadow-2xl md:shadow-none`}>
         <div className="p-6 flex items-center justify-between border-b border-white/20">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 text-xs">

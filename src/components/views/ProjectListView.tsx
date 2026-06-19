@@ -38,11 +38,14 @@ function ProjectCard({ project, users, onRefresh }: ProjectCardProps) {
     "Completed": "from-emerald-500 to-green-500",
   };
 
+  const validUserNames = users?.map(u => u.name) || [];
+  const validMembers = (project.members || "").split(", ").filter(Boolean).filter((name: string) => validUserNames.includes(name)).join(", ");
+
   const openModal = () => {
     setEditData({
       name: project.name,
       objective: project.objective || "",
-      members: project.members || "",
+      members: validMembers,
       status: project.status,
       startDate: new Date(project.startDate),
       endDate: new Date(project.endDate),
@@ -132,10 +135,10 @@ function ProjectCard({ project, users, onRefresh }: ProjectCardProps) {
               </div>
             )}
             
-            {project.members && (
+            {validMembers && (
               <div className="flex items-start gap-2 text-sm text-gray-600">
                 <Users className="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" />
-                <p className="line-clamp-1">{project.members}</p>
+                <p className="line-clamp-1">{validMembers}</p>
               </div>
             )}
 
