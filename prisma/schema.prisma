@@ -18,7 +18,8 @@ model User {
   role      String   // "Admin" | "Staff"
   tasks     Task[]
   timeLogs  TimeLog[]
-  supportTickets SupportTicket[]
+  supportTickets SupportTicket[] @relation("SupportCreator")
+  assignedSupportTickets SupportTicket[] @relation("SupportExecutors")
   comments       Comment[]
   commentReadStatuses CommentReadStatus[]
   notifications  Notification[]
@@ -83,24 +84,30 @@ model TimeLog {
 }
 
 model SupportTicket {
-  id          String   @id @default(uuid())
-  userId      String
-  taskName    String
-  supportType String
-  module      String
-  startDate   DateTime
-  endDate     DateTime
-  issue       String?
-  solution    String?
-  status      String
-  priority    String   @default("Normal")
-  attachment  String?
+  id            String   @id @default(uuid())
+  userId        String
+  taskName      String
+  supportType   String
+  module        String
+  startDate     DateTime
+  endDate       DateTime?
+  issue         String?
+  solution      String?
+  status        String
+  priority      String   @default("Normal")
+  attachment    String?
 
-  user        User     @relation(fields: [userId], references: [id])
-  comments    Comment[]
+  // Penambahan Field Baru
+  ticketType    String   @default("DAILY_ACTIVITY") // "REQUEST" atau "DAILY_ACTIVITY"
+  requesterName String?  // Nama Pelapor (untuk REQUEST)
+  executors     User[]   @relation("SupportExecutors")
+  link          String?
+
+  user          User     @relation("SupportCreator", fields: [userId], references: [id])
+  comments      Comment[]
   commentReadStatuses CommentReadStatus[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Comment {

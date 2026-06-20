@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ModernSelect from "../common/ModernSelect";
-import { Paperclip, MessageSquare } from "lucide-react";
+import { Paperclip, MessageSquare, Link as LinkIcon } from "lucide-react";
 import CommentsDrawer from "../common/CommentsDrawer";
+import dynamic from "next/dynamic";
+import "react-quill-new/dist/quill.snow.css";
 
-export default function SupportClient({ tickets = [], currentUser }: { tickets: any[], currentUser: any }) {
+const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+
+export default function SupportClient({ tickets = [], currentUser, systemUsers = [] }: { tickets: any[], currentUser: any, systemUsers?: any[] }) {
   const [addingTicket, setAddingTicket] = useState(false);
   const [editingTicket, setEditingTicket] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,6 +21,9 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
   const [activeCommentTicket, setActiveCommentTicket] = useState<{id: string, title: string} | null>(null);
   
   const defaultTaskData = {
+    ticketType: "DAILY_ACTIVITY",
+    requesterName: "",
+    executorIds: [] as string[],
     taskName: "",
     supportType: "Hardware & Software Support",
     module: "Sistem AI",
@@ -27,7 +34,8 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
     solution: "",
     status: "Done",
     priority: "Normal",
-    attachment: ""
+    attachment: "",
+    link: ""
   };
 
   const [newTaskData, setNewTaskData] = useState(defaultTaskData);
@@ -47,6 +55,7 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newTaskData,
+          status: newTaskData.ticketType === "REQUEST" ? "Not Started" : newTaskData.status,
           module: finalModule
         })
       });
@@ -102,7 +111,11 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
           solution: editTaskData.solution,
           status: editTaskData.status,
           priority: editTaskData.priority,
-          attachment: editTaskData.attachment
+          attachment: editTaskData.attachment,
+          ticketType: editTaskData.ticketType,
+          requesterName: editTaskData.requesterName,
+          executorIds: editTaskData.executors?.map((e: any) => e.id) || [],
+          link: editTaskData.link
         })
       });
       setEditingTicket(null);
@@ -136,7 +149,11 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
       module: isCustomModule ? "Lainnya" : ticket.module,
       customModule: isCustomModule ? ticket.module : "",
       priority: ticket.priority || "Normal",
-      attachment: ticket.attachment || ""
+      attachment: ticket.attachment || "",
+      ticketType: ticket.ticketType || "DAILY_ACTIVITY",
+      requesterName: ticket.requesterName || "",
+      executorIds: ticket.executors ? ticket.executors.map((e: any) => e.id) : [],
+      link: ticket.link || ""
     });
   };
 
@@ -247,8 +264,9 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
 
   const displayedTickets = tickets.filter(ticket => {
     // Tab filter
-    if (activeTab === 'my-logs' && ticket.userId !== currentUser.id) return false;
-    if (activeTab === 'team-logs' && ticket.userId === currentUser.id) return false;
+    const isMyLog = ticket.userId === currentUser.id || ticket.executors?.some((e: any) => e.id === currentUser.id);
+    if (activeTab === 'my-logs' && !isMyLog) return false;
+    if (activeTab === 'team-logs' && isMyLog) return false;
 
     // Dropdown filters
     if (filters.user !== 'all' && ticket.userId !== filters.user) return false;
@@ -428,11 +446,16 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                     <div className="text-gray-500">{ticket.user?.jobDesk || "-"}</div>
                   </div>
                   
-                  <div className="font-medium text-gray-800 text-xs break-words">{ticket.taskName || "-"}</div>
+                  <div className="font-medium text-gray-800 text-xs break-words">
+                    {ticket.ticketType === "REQUEST" && (
+                      <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQUEST</span>
+                    )}
+                    {ticket.taskName || "-"}
+                  </div>
                   <div className="text-xs text-gray-700 break-words">{ticket.supportType || "-"}</div>
                   <div className="text-xs text-gray-700 break-words">{ticket.module || "-"}</div>
-                  <div className="text-xs text-gray-700 break-words">{ticket.issue || "-"}</div>
-                  <div className="text-xs text-gray-700 break-words">{ticket.solution || "-"}</div>
+                  <div className="text-xs text-gray-700 break-words" dangerouslySetInnerHTML={{ __html: ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '').substring(0, 50) + (ticket.issue.length > 50 ? '...' : '') : "-" }}></div>
+                  <div className="text-xs text-gray-700 break-words" dangerouslySetInnerHTML={{ __html: ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '').substring(0, 50) + (ticket.solution.length > 50 ? '...' : '') : "-" }}></div>
                   <div>{renderStatus(ticket.status)}</div>
                   <div>{renderPriority(ticket.priority)}</div>
 
@@ -480,9 +503,54 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
             
             <div className="p-6 overflow-y-auto flex-1">
               <div className="space-y-4">
+                <div className="flex gap-4 p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="radio" name="ticketType" value="DAILY_ACTIVITY" 
+                      checked={newTaskData.ticketType === "DAILY_ACTIVITY"} 
+                      onChange={() => setNewTaskData({...newTaskData, ticketType: "DAILY_ACTIVITY"})} 
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
+                    📝 Kegiatan Harian IT (Daily Log)
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="radio" name="ticketType" value="REQUEST" 
+                      checked={newTaskData.ticketType === "REQUEST"} 
+                      onChange={() => setNewTaskData({...newTaskData, ticketType: "REQUEST"})} 
+                      className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                    🆘 Permintaan Bantuan (Request)
+                  </label>
+                </div>
+
+                {newTaskData.ticketType === "REQUEST" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
+                      <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
+                        value={newTaskData.requesterName} onChange={(e) => setNewTaskData({...newTaskData, requesterName: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                        {systemUsers.map(u => (
+                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                            <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
+                              onChange={(e) => {
+                                const newIds = e.target.checked 
+                                  ? [...newTaskData.executorIds, u.id] 
+                                  : newTaskData.executorIds.filter(id => id !== u.id);
+                                setNewTaskData({...newTaskData, executorIds: newIds});
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan) <span className="text-red-500">*</span></label>
-                  <input autoFocus type="text" placeholder="Enter task description..." className={inputClass}
+                  <input autoFocus type="text" placeholder={newTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
                     value={newTaskData.taskName} onChange={(e) => setNewTaskData({...newTaskData, taskName: e.target.value})}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddTicket(); if (e.key === 'Escape') setAddingTicket(false); }} />
                 </div>
@@ -510,28 +578,37 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                     <DatePicker selected={newTaskData.startDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, startDate: date})} 
                       showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" className={inputClass} wrapperClassName="w-full" />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
-                    <DatePicker selected={newTaskData.endDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, endDate: date})} 
-                      showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={newTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
-                  </div>
+                  {newTaskData.ticketType === "DAILY_ACTIVITY" && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
+                      <DatePicker selected={newTaskData.endDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, endDate: date})} 
+                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={newTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
+                    </div>
+                  )}
                 </div>
                 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Issue (Kendala)</label>
-                  <input type="text" placeholder="Any issues?" className={inputClass} value={newTaskData.issue} onChange={(e) => setNewTaskData({...newTaskData, issue: e.target.value})} />
+                  <ReactQuill theme="snow" value={newTaskData.issue} onChange={(val) => setNewTaskData({...newTaskData, issue: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
                 </div>
                 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Solution (Solusi)</label>
-                  <input type="text" placeholder="Action taken..." className={inputClass} value={newTaskData.solution} onChange={(e) => setNewTaskData({...newTaskData, solution: e.target.value})} />
+                  <ReactQuill theme="snow" value={newTaskData.solution} onChange={(val) => setNewTaskData({...newTaskData, solution: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Link / Tautan Rujukan</label>
+                  <input type="url" placeholder="https://..." className={inputClass} value={newTaskData.link} onChange={(e) => setNewTaskData({...newTaskData, link: e.target.value})} />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-                    <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
-                  </div>
+                <div className={`grid ${newTaskData.ticketType === "REQUEST" ? "grid-cols-1" : "grid-cols-2"} gap-4`}>
+                  {newTaskData.ticketType !== "REQUEST" && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+                      <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
                     <ModernSelect options={priorityOptions} value={newTaskData.priority} onChange={(val) => setNewTaskData({...newTaskData, priority: val})} className="w-full" />
@@ -584,9 +661,54 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
             
             <div className="p-6 overflow-y-auto flex-1">
               <div className="space-y-4">
+                <div className="flex gap-4 p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="radio" name="editTicketType" value="DAILY_ACTIVITY" 
+                      checked={editTaskData.ticketType === "DAILY_ACTIVITY"} 
+                      onChange={() => setEditTaskData({...editTaskData, ticketType: "DAILY_ACTIVITY"})} 
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
+                    📝 Kegiatan Harian IT (Daily Log)
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="radio" name="editTicketType" value="REQUEST" 
+                      checked={editTaskData.ticketType === "REQUEST"} 
+                      onChange={() => setEditTaskData({...editTaskData, ticketType: "REQUEST"})} 
+                      className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
+                    🆘 Permintaan Bantuan (Request)
+                  </label>
+                </div>
+
+                {editTaskData.ticketType === "REQUEST" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
+                      <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
+                        value={editTaskData.requesterName} onChange={(e) => setEditTaskData({...editTaskData, requesterName: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                        {systemUsers.map(u => (
+                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                            <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
+                              onChange={(e) => {
+                                const newIds = e.target.checked 
+                                  ? [...(editTaskData.executorIds || []), u.id] 
+                                  : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
+                                setEditTaskData({...editTaskData, executorIds: newIds});
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan) <span className="text-red-500">*</span></label>
-                  <input autoFocus type="text" placeholder="Enter task description..." className={inputClass}
+                  <input autoFocus type="text" placeholder={editTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
                     value={editTaskData.taskName} onChange={(e) => setEditTaskData({...editTaskData, taskName: e.target.value})}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateTicket(); if (e.key === 'Escape') { setEditingTicket(null); setEditTaskData(null); } }} />
                 </div>
@@ -614,21 +736,28 @@ export default function SupportClient({ tickets = [], currentUser }: { tickets: 
                     <DatePicker selected={editTaskData.startDate} onChange={(date: Date | null) => date && setEditTaskData({...editTaskData, startDate: date})} 
                       showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" className={inputClass} wrapperClassName="w-full" />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
-                    <DatePicker selected={editTaskData.endDate} onChange={(date: Date | null) => date && setEditTaskData({...editTaskData, endDate: date})} 
-                      showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={editTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
-                  </div>
+                  {editTaskData.ticketType === "DAILY_ACTIVITY" && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
+                      <DatePicker selected={editTaskData.endDate} onChange={(date: Date | null) => date && setEditTaskData({...editTaskData, endDate: date})} 
+                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={editTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
+                    </div>
+                  )}
                 </div>
                 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Issue (Kendala)</label>
-                  <input type="text" placeholder="Any issues?" className={inputClass} value={editTaskData.issue || ""} onChange={(e) => setEditTaskData({...editTaskData, issue: e.target.value})} />
+                  <ReactQuill theme="snow" value={editTaskData.issue || ""} onChange={(val) => setEditTaskData({...editTaskData, issue: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
                 </div>
                 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Solution (Solusi)</label>
-                  <input type="text" placeholder="Action taken..." className={inputClass} value={editTaskData.solution || ""} onChange={(e) => setEditTaskData({...editTaskData, solution: e.target.value})} />
+                  <ReactQuill theme="snow" value={editTaskData.solution || ""} onChange={(val) => setEditTaskData({...editTaskData, solution: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Link / Tautan Rujukan</label>
+                  <input type="url" placeholder="https://..." className={inputClass} value={editTaskData.link || ""} onChange={(e) => setEditTaskData({...editTaskData, link: e.target.value})} />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">

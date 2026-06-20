@@ -72,6 +72,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let projectName = "-";
+    if (body.projectId) {
+      const project = await prisma.project.findUnique({ where: { id: body.projectId } });
+      if (project) projectName = project.name;
+    }
+
+    const { sendTelegramMessage, formatHtmlForTelegram } = await import("@/lib/telegram");
+    const cleanDoc = formatHtmlForTelegram(body.documentation);
+    
+    let message = `🎯 <b>PROJECT TASK BARU</b> 🎯\n\n`;
+    message += `<b>Judul Tugas:</b> ${newTask.title}\n`;
+    message += `<b>Project:</b> ${projectName}\n`;
+    message += `<b>Tugas Untuk:</b> ${body.executor || "Belum ditentukan"}\n`;
+    message += `<b>Prioritas:</b> ${newTask.priority}\n`;
+    if (cleanDoc && cleanDoc !== "-") {
+      message += `<b>Deskripsi:</b>\n${cleanDoc}\n\n`;
+    }
+    message += `<i>Silakan cek detailnya di aplikasi IT Tracker.</i>`;
+    
+    await sendTelegramMessage(message);
+
     return NextResponse.json(newTask, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

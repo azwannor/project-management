@@ -14,7 +14,7 @@ export default async function SupportPage() {
     redirect("/login");
   }
 
-  const [currentUser, tickets] = await Promise.all([
+  const [currentUser, tickets, allUsers] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.userId as string },
       select: { id: true, name: true, jobDesk: true, role: true }
@@ -22,6 +22,7 @@ export default async function SupportPage() {
     prisma.supportTicket.findMany({
       include: { 
         user: true,
+        executors: { select: { id: true, name: true } },
         comments: {
           orderBy: { createdAt: 'desc' },
           take: 1
@@ -31,6 +32,10 @@ export default async function SupportPage() {
         }
       },
       orderBy: { createdAt: 'desc' }
+    }),
+    prisma.user.findMany({
+      select: { id: true, name: true, role: true, jobDesk: true },
+      orderBy: { name: 'asc' }
     })
   ]);
 
@@ -53,7 +58,7 @@ export default async function SupportPage() {
 
       {/* Main Content Area */}
       <div className="glass-panel flex flex-col h-[calc(100vh-200px)] overflow-hidden p-6">
-        <SupportClient tickets={tickets} currentUser={currentUser} />
+        <SupportClient tickets={tickets} currentUser={currentUser} systemUsers={allUsers} />
       </div>
     </div>
   );
