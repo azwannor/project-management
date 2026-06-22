@@ -52,7 +52,7 @@ export async function POST(req: Request) {
            include: { executors: true }
         });
         
-        if (ticket && ticket.status !== "Completed") {
+        if (ticket && ticket.status !== "Done") {
           const existingExecutorIds = ticket.executors.map(e => e.id);
           const connectExecutors = userId && !existingExecutorIds.includes(userId) 
               ? { connect: [{ id: userId }] } 
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
           await prisma.supportTicket.update({
             where: { id: ticketId },
             data: {
-              status: "Completed",
+              status: "Done",
               endDate: new Date(),
               solution: updatedSolution,
               ...(connectExecutors ? { executors: connectExecutors } : {})
