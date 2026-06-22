@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle, MessageSquare } from "lucide-react";
+import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle, MessageSquare, GripVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -561,21 +561,30 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           setDraggedTaskId(null);
           setDragOverTargetId(null);
         }}
-        className={isDragged ? "opacity-50" : ""}
+        className={`group ${isDragged ? "opacity-50" : ""} cursor-grab active:cursor-grabbing`}
       >
         <div 
-          className={`grid gap-3 items-center px-4 py-3 border-b transition-colors duration-150 ${level === 0 ? 'bg-white' : 'bg-gray-50/20'} ${isDropTarget ? 'border-b-2 border-b-blue-500 bg-blue-50/60' : 'border-gray-100/80 hover:bg-blue-50/30'}`} 
+          className={`grid gap-3 items-center px-2 py-3 border-b transition-colors duration-150 ${level === 0 ? 'bg-white' : 'bg-gray-50/20'} ${isDropTarget ? 'border-b-2 border-b-blue-500 bg-blue-50/60' : 'border-gray-100/80 hover:bg-blue-50/30'}`} 
           style={{ gridTemplateColumns: 'minmax(220px, 4fr) 2fr 2fr 2fr 2fr 2fr 1.5fr 2fr' }}
         >
           {/* Task Name - Editable */}
-          <div className="flex items-center gap-2 group min-w-0">
-            <div style={{ width: `${level * 1.5}rem` }} className="shrink-0" />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-4 shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <GripVertical className="w-3.5 h-3.5 text-gray-400" />
+            </div>
+            {level > 0 && (
+              <div className="flex shrink-0 h-6 items-end">
+                {Array.from({ length: level }).map((_, i) => (
+                  <div key={i} className={`border-dashed border-gray-300 ${i === level - 1 ? 'w-3 h-3 border-l-2 border-b-2 rounded-bl-sm mb-3 mr-1' : 'w-5 h-6 border-l-2'}`} />
+                ))}
+              </div>
+            )}
             {hasChildren ? (
-              <button onClick={() => toggleRow(task.id)} className="p-1 hover:bg-gray-200/80 rounded-md text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+              <button onClick={() => toggleRow(task.id)} className="p-0.5 hover:bg-gray-200/80 rounded-md text-gray-400 hover:text-gray-600 transition-colors shrink-0">
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             ) : (
-              <div className="w-6 shrink-0" />
+              <div className="w-5 shrink-0" />
             )}
             <div className={`flex-1 min-w-0 ${level === 0 ? 'font-semibold text-gray-900 text-sm' : 'font-medium text-gray-700 text-xs'}`}>
               <EditableText value={task.title} taskId={task.id} field="title" onSave={handleInlineUpdate} />
