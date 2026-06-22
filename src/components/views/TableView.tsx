@@ -533,6 +533,11 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           e.stopPropagation();
           e.dataTransfer.setData("taskId", task.id);
           setDraggedTaskId(task.id);
+          
+          // Auto-collapse subtasks when dragging starts
+          if (hasChildren && isExpanded) {
+            setExpandedRows(prev => ({ ...prev, [task.id]: false }));
+          }
         }}
         onDragOver={(e) => {
           e.preventDefault();
