@@ -219,12 +219,12 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
 
   const handleExportCSV = () => {
     // Generate CSV string from displayedTickets
-    const headers = ["Start Time", "End Time", "User", "Role", "Task Name", "Category", "Module", "Issue", "Solution", "Status"];
+    const headers = ["Start Time", "End Time", "Requester", "Executor", "Task Name", "Category", "Module", "Issue", "Solution", "Status"];
     const rows = displayedTickets.map(t => [
       new Date(t.startDate).toLocaleString(),
       new Date(t.endDate).toLocaleString(),
-      t.user?.name || "Unknown",
-      t.user?.jobDesk || "-",
+      `"${(t.requesterName || t.user?.name || "Unknown").replace(/"/g, '""')}"`,
+      `"${(t.ticketType === "REQUEST" ? (t.executors?.map((e:any)=>e.name).join(", ") || "Belum ditentukan") : (t.user?.name || "Unknown")).replace(/"/g, '""')}"`,
       `"${(t.taskName || "").replace(/"/g, '""')}"`,
       `"${(t.supportType || "").replace(/"/g, '""')}"`,
       `"${(t.module || "").replace(/"/g, '""')}"`,
@@ -407,10 +407,11 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
           <div className="min-w-[1200px] flex-1 flex flex-col">
             {/* Table Header */}
           <div className="grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10"
-            style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
+            style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
             <div>Start Time</div>
             <div>End Time</div>
-            <div>User & Role</div>
+            <div>Requester</div>
+            <div>Executor</div>
             <div>Task Name</div>
             <div>Category</div>
             <div>Module</div>
@@ -436,15 +437,22 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
             {displayedTickets.length > 0 ? (
               displayedTickets.map((ticket, i) => (
                 <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`grid gap-3 items-center px-4 py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b border-gray-100/80 cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'}`}
-                  style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
+                  style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
                   
                   <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.startDate)}</div>
                   <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.endDate)}</div>
                   
                   <div className="text-xs">
-                    <div className="font-semibold text-gray-800">{ticket.user?.name || "Unknown"}</div>
-                    <div className="text-gray-500">{ticket.user?.jobDesk || "-"}</div>
-                  </div>
+                      <div className="font-semibold text-gray-800 text-[11px] truncate w-[100px]" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
+                      {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate w-[100px]" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
+                    </div>
+                    <div className="text-xs">
+                      <div className="font-semibold text-blue-700 text-[11px] break-words w-[100px]">
+                        {ticket.ticketType === "REQUEST" 
+                          ? (ticket.executors?.map((e:any) => e.name).join(", ") || "Belum ditentukan") 
+                          : (ticket.user?.name || "-")}
+                      </div>
+                    </div>
                   
                   <div className="font-medium text-gray-800 text-xs break-words">
                     {ticket.ticketType === "REQUEST" && (
