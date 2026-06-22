@@ -269,7 +269,11 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     if (activeTab === 'team-logs' && isMyLog) return false;
 
     // Dropdown filters
-    if (filters.user !== 'all' && ticket.userId !== filters.user) return false;
+    if (filters.user !== 'all') {
+      const isCreator = ticket.userId === filters.user;
+      const isExecutor = ticket.executors?.some((e: any) => e.id === filters.user);
+      if (!isCreator && !isExecutor) return false;
+    }
     if (filters.module !== 'all' && ticket.module !== filters.module) return false;
     if (filters.category !== 'all' && ticket.supportType !== filters.category) return false;
     if (filters.status !== 'all' && ticket.status !== filters.status) return false;
@@ -293,9 +297,20 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
   // Extract unique options for filters from all tickets (excluding current user for team logs)
   const availableTickets = tickets.filter(t => activeTab === 'team-logs' ? t.userId !== currentUser.id : t.userId === currentUser.id);
   
-  const uniqueUsers = Array.from(new Map(
-    tickets.filter(t => t.userId !== currentUser.id).map(t => [t.userId, t.user])
-  ).values());
+  const allTeamUsersMap = new Map();
+  tickets.forEach(t => {
+    if (t.userId !== currentUser.id && t.user) {
+      allTeamUsersMap.set(t.userId, t.user);
+    }
+    if (t.executors && t.executors.length > 0) {
+      t.executors.forEach((e: any) => {
+        if (e.id !== currentUser.id) {
+          allTeamUsersMap.set(e.id, e);
+        }
+      });
+    }
+  });
+  const uniqueUsers = Array.from(allTeamUsersMap.values());
   const uniqueModules = Array.from(new Set(availableTickets.map(t => t.module).filter(Boolean)));
   const uniqueCategories = Array.from(new Set(availableTickets.map(t => t.supportType).filter(Boolean)));
 
