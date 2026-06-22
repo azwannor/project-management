@@ -349,6 +349,20 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
   };
 
   const handleMoveTask = async (taskId: string, targetParentId: string | null, targetProjectId?: string | null) => {
+    if (targetParentId) {
+      let currentTarget: string | null = targetParentId;
+      while (currentTarget) {
+        if (currentTarget === taskId) {
+          alert("Tidak bisa memindahkan task ke dalam subtask-nya sendiri!");
+          setDraggedTaskId(null);
+          setDragOverTargetId(null);
+          return;
+        }
+        const parent = tasks.find(t => t.id === currentTarget)?.parentId;
+        currentTarget = parent || null;
+      }
+    }
+
     setIsMoving(true);
     try {
       const payload: any = { parentId: targetParentId };
