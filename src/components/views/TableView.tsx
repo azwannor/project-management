@@ -572,13 +572,7 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
             <div className="w-4 shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <GripVertical className="w-3.5 h-3.5 text-gray-400" />
             </div>
-            {level > 0 && (
-              <div className="flex shrink-0 h-6 items-end">
-                {Array.from({ length: level }).map((_, i) => (
-                  <div key={i} className={`border-dashed border-gray-300 ${i === level - 1 ? 'w-3 h-3 border-l-2 border-b-2 rounded-bl-sm mb-3 mr-1' : 'w-5 h-6 border-l-2'}`} />
-                ))}
-              </div>
-            )}
+            <div style={{ width: `${level * 1.5}rem` }} className="shrink-0" />
             {hasChildren ? (
               <button onClick={() => toggleRow(task.id)} className="p-0.5 hover:bg-gray-200/80 rounded-md text-gray-400 hover:text-gray-600 transition-colors shrink-0">
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
