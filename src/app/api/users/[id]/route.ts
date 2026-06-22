@@ -9,13 +9,14 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, email, password, jobDesk, role } = body;
+    const { name, email, password, jobDesk, role, telegramUsername } = body;
 
     const dataToUpdate: any = {};
     if (name) dataToUpdate.name = name;
     if (email) dataToUpdate.email = email;
     if (jobDesk) dataToUpdate.jobDesk = jobDesk;
     if (role) dataToUpdate.role = role;
+    if (telegramUsername !== undefined) dataToUpdate.telegramUsername = telegramUsername;
 
     if (password) {
       dataToUpdate.password = await bcrypt.hash(password, 10);

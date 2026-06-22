@@ -16,6 +16,7 @@ model User {
   photo     String?
   jobDesk   String
   role      String   // "Admin" | "Staff"
+  telegramUsername String? // Untuk integrasi webhook telegram
   tasks     Task[]
   timeLogs  TimeLog[]
   supportTickets SupportTicket[] @relation("SupportCreator")

@@ -10,6 +10,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
     name: currentUser.name || "",
     email: currentUser.email || "",
     photo: currentUser.photo || "",
+    telegramUsername: currentUser.telegramUsername || "",
     oldPassword: "",
     newPassword: "",
   });
@@ -116,6 +117,18 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
                       <input type="email" value={profileData.email} onChange={e => setProfileData({...profileData, email: e.target.value})} className={inputClass} required />
                     </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">Telegram Username <span className="text-xs font-normal normal-case text-gray-400 ml-1">(Tanpa @)</span></label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500 sm:text-sm">@</span>
+                        </div>
+                        <input type="text" value={profileData.telegramUsername} onChange={e => setProfileData({...profileData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username_telegram_anda" />
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+                        Diperlukan agar sistem bisa mengenali Anda saat Anda menekan tombol "Tandai Selesai" langsung dari notifikasi grup Telegram.
+                      </p>
+                    </div>
                   </div>
 
                   <div className="pt-4 border-t border-gray-100">
@@ -154,7 +167,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
 function UserManagement({ users, inputClass }: { users: any[], inputClass: string }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -176,7 +189,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
       if (!res.ok) throw new Error(data.error);
       setIsAdding(false);
       setEditingUser(null);
-      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff" });
+      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" });
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -203,7 +216,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-slate-800">User List</h2>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff" }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Add User
         </button>
       </div>
@@ -235,6 +248,15 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                   <option value="Staff">Staff</option>
                   <option value="Admin">Admin</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Telegram Username</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">@</span>
+                  </div>
+                  <input type="text" value={formData.telegramUsername} onChange={e => setFormData({...formData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username" />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -276,7 +298,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "" }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleDeleteUser(u.id, u.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
