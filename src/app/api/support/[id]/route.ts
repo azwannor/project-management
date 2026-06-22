@@ -48,7 +48,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     });
 
-    if (existingTicket && existingTicket.priority !== "URGENT" && ticket.priority === "URGENT") {
+    if (existingTicket && existingTicket.ticketType === "REQUEST" && existingTicket.priority !== "URGENT" && ticket.priority === "URGENT") {
       const reporter = existingTicket.user?.name || "Unknown";
       const requester = ticket.requesterName || reporter;
       const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Belum ditentukan";
@@ -60,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await sendTelegramMessage(message);
     }
     
-    if (existingTicket && restData.status === "Done" && existingTicket.status !== "Done") {
+    if (existingTicket && existingTicket.ticketType === "REQUEST" && restData.status === "Done" && existingTicket.status !== "Done") {
       const reporter = existingTicket.user?.name || "Unknown";
       const requester = ticket.requesterName || reporter;
       const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Belum ditentukan";

@@ -68,18 +68,14 @@ export async function POST(req: Request) {
     const user = await prisma.user.findUnique({ where: { id: session.userId as string } });
     const reporter = user?.name || "Unknown";
     
-    let message = "";
-    const { formatHtmlForTelegram } = await import("@/lib/telegram");
+    const { formatHtmlForTelegram, sendTelegramMessage } = await import("@/lib/telegram");
     const cleanIssue = formatHtmlForTelegram(ticket.issue);
     if (ticket.ticketType === "REQUEST") {
       const executorNames = ticket.executors.map((e: any) => e.name).join(", ") || "Belum ditentukan";
-      message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Tugas Untuk:</b> ${executorNames}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
-    } else {
-      message = `📝 <b>DAILY LOG BARU</b> 📝\n\n<b>Kegiatan:</b> ${ticket.taskName}\n<b>Oleh:</b> ${reporter}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\nCek detailnya di aplikasi IT Tracker.`;
+      const message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Tugas Untuk:</b> ${executorNames}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
+      
+      await sendTelegramMessage(message);
     }
-    
-    const { sendTelegramMessage } = await import("@/lib/telegram");
-    await sendTelegramMessage(message);
 
     return NextResponse.json(ticket);
   } catch (error) {
