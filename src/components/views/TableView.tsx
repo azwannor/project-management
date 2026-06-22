@@ -530,29 +530,34 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
         key={task.id}
         draggable
         onDragStart={(e) => {
+          e.stopPropagation();
           e.dataTransfer.setData("taskId", task.id);
           setDraggedTaskId(task.id);
         }}
         onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
           if (draggedTaskId && draggedTaskId !== task.id) {
-            e.preventDefault();
             setDragOverTargetId(task.id);
           }
         }}
         onDragLeave={(e) => {
+          e.stopPropagation();
           if (dragOverTargetId === task.id) {
             setDragOverTargetId(null);
           }
         }}
         onDrop={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           const droppedTaskId = e.dataTransfer.getData("taskId");
           if (droppedTaskId && droppedTaskId !== task.id) {
             handleMoveTask(droppedTaskId, task.id);
           }
           setDragOverTargetId(null);
         }}
-        onDragEnd={() => {
+        onDragEnd={(e) => {
+          e.stopPropagation();
           setDraggedTaskId(null);
           setDragOverTargetId(null);
         }}
