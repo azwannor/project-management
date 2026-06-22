@@ -198,6 +198,19 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     }
   };
 
+  const cleanHtmlText = (html: string | null) => {
+    if (!html) return "-";
+    return html
+      .replace(/<[^>]*>?/gm, '') // Remove HTML tags
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
+  };
+
   const renderStatus = (status: string) => {
     switch (status) {
       case "Done":
@@ -477,11 +490,11 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                   </div>
                   <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.supportType || "-"}>{ticket.supportType || "-"}</div>
                   <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.module || "-"}>{ticket.module || "-"}</div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '') : "-"}>
-                    {ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '').substring(0, 100) : "-"}
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={cleanHtmlText(ticket.issue)}>
+                    {cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}
                   </div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '') : "-"}>
-                    {ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '').substring(0, 100) : "-"}
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={cleanHtmlText(ticket.solution)}>
+                    {cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}
                   </div>
                   <div className="min-w-0">{renderStatus(ticket.status)}</div>
                   <div className="min-w-0">{renderPriority(ticket.priority)}</div>
