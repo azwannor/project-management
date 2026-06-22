@@ -454,35 +454,39 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                 <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`grid gap-3 items-center px-4 py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b border-gray-100/80 cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'}`}
                   style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
                   
-                  <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.startDate)}</div>
-                  <div className="text-xs text-gray-700 tabular-nums">{formatDate(ticket.endDate)}</div>
+                  <div className="text-xs text-gray-700 tabular-nums min-w-0">{formatDate(ticket.startDate)}</div>
+                  <div className="text-xs text-gray-700 tabular-nums min-w-0">{formatDate(ticket.endDate)}</div>
                   
-                  <div className="text-xs">
-                      <div className="font-semibold text-gray-800 text-[11px] truncate w-[100px]" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
-                      {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate w-[100px]" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
+                  <div className="text-xs min-w-0">
+                      <div className="font-semibold text-gray-800 text-[11px] truncate" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
+                      {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
                     </div>
-                    <div className="text-xs">
-                      <div className="font-semibold text-blue-700 text-[11px] break-words w-[100px]">
+                    <div className="text-xs min-w-0">
+                      <div className="font-semibold text-blue-700 text-[11px] truncate">
                         {ticket.ticketType === "REQUEST" 
                           ? (ticket.executors?.map((e:any) => e.name).join(", ") || "Belum ditentukan") 
                           : (ticket.user?.name || "-")}
                       </div>
                     </div>
                   
-                  <div className="font-medium text-gray-800 text-xs break-words">
+                  <div className="font-medium text-gray-800 text-xs min-w-0 flex items-center gap-1.5">
                     {ticket.ticketType === "REQUEST" && (
-                      <span className="inline-block mr-1.5 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQUEST</span>
+                      <span className="shrink-0 inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQ</span>
                     )}
-                    {ticket.taskName || "-"}
+                    <span className="truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
                   </div>
-                  <div className="text-xs text-gray-700 break-words">{ticket.supportType || "-"}</div>
-                  <div className="text-xs text-gray-700 break-words">{ticket.module || "-"}</div>
-                  <div className="text-xs text-gray-700 break-words" dangerouslySetInnerHTML={{ __html: ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '').substring(0, 50) + (ticket.issue.length > 50 ? '...' : '') : "-" }}></div>
-                  <div className="text-xs text-gray-700 break-words" dangerouslySetInnerHTML={{ __html: ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '').substring(0, 50) + (ticket.solution.length > 50 ? '...' : '') : "-" }}></div>
-                  <div>{renderStatus(ticket.status)}</div>
-                  <div>{renderPriority(ticket.priority)}</div>
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.supportType || "-"}>{ticket.supportType || "-"}</div>
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.module || "-"}>{ticket.module || "-"}</div>
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '') : "-"}>
+                    {ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '').substring(0, 100) : "-"}
+                  </div>
+                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '') : "-"}>
+                    {ticket.solution ? ticket.solution.replace(/<[^>]*>?/gm, '').substring(0, 100) : "-"}
+                  </div>
+                  <div className="min-w-0">{renderStatus(ticket.status)}</div>
+                  <div className="min-w-0">{renderPriority(ticket.priority)}</div>
 
-                  <div className="flex justify-end gap-1 opacity-0 hover:opacity-100">
+                  <div className="flex justify-end gap-1 opacity-0 hover:opacity-100 min-w-0">
                     <button 
                       onClick={(e) => { e.stopPropagation(); setActiveCommentTicket({id: ticket.id, title: ticket.taskName}); }} 
                       className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
