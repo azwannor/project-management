@@ -30,18 +30,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen p-6 md:p-10 text-gray-900">
-      {/* Header Panel */}
-      <header className="glass-panel p-6 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-white/30 rounded-xl backdrop-blur-md border border-white/50 shadow-sm">
-            <LayoutDashboard className="w-8 h-8 text-blue-800" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 drop-shadow-sm">Dashboard</h1>
-            <p className="text-sm text-gray-600 font-medium">Overview of IT tasks and support tickets.</p>
-          </div>
-        </div>
-      </header>
+
 
       {/* Main Content Area */}
       <DashboardClient 
