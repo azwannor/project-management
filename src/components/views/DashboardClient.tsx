@@ -41,11 +41,13 @@ export default function DashboardClient({
     };
   }, [filteredProjects, filteredTasks, filteredTickets, users]);
 
-  // Support Tickets by Module
-  const ticketsByModule = useMemo(() => {
+  // Support Tickets by Category
+  const ticketsByCategory = useMemo(() => {
     const counts: Record<string, number> = {};
     filteredTickets.forEach(t => {
-      counts[t.module] = (counts[t.module] || 0) + 1;
+      // Use supportType as category
+      const category = t.supportType || "Uncategorized";
+      counts[category] = (counts[category] || 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [filteredTickets]);
@@ -205,15 +207,15 @@ export default function DashboardClient({
             </div>
           </div>
 
-          {/* Tickets By Module */}
+          {/* Tickets By Category */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Activity className="w-4 h-4 text-purple-500" />
-              Support Issues by Module
+              Support Issues by Category
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={ticketsByModule} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                <AreaChart data={ticketsByCategory} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
