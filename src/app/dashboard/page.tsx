@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   const [projects, tasks, supportTickets, users] = await Promise.all([
     prisma.project.findMany(),
     prisma.task.findMany({ include: { project: true } }),
-    prisma.supportTicket.findMany({ include: { user: true } }),
+    prisma.supportTicket.findMany({ include: { user: true, executors: true } }),
     prisma.user.findMany({ select: { id: true, name: true, role: true } }),
   ]);
 
