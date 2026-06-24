@@ -144,12 +144,12 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
 
   const openEditModal = (ticket: any) => {
     setEditingTicket(ticket);
-    const isCustomModule = !moduleOptions.find(opt => opt.value === ticket.module && opt.value !== "Lainnya");
+    const isCustomModule = !(ticket.module in CATEGORY_MAP) && ticket.module !== "General IT / Lainnya...";
     setEditTaskData({
       ...ticket,
       startDate: new Date(ticket.startDate),
       endDate: new Date(ticket.endDate),
-      module: isCustomModule ? "Lainnya" : ticket.module,
+      module: isCustomModule ? "General IT / Lainnya..." : ticket.module,
       customModule: isCustomModule ? ticket.module : "",
       priority: ticket.priority || "Normal",
       attachment: ticket.attachment || "",
