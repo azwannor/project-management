@@ -651,38 +651,41 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                 </div>
 
                 {newTaskData.ticketType === "REQUEST" && (
-                  <div>
-                    {newTaskData.supportType === "Master Data" ? (
+                  <div className="space-y-4">
+                    {newTaskData.supportType === "Master Data" && (
                       <div>
                         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
-                        <select className={inputClass} value={newTaskData.area || ""} onChange={(e) => setNewTaskData({...newTaskData, area: e.target.value})}>
+                        <select className={inputClass} value={newTaskData.area || ""} onChange={(e) => {
+                          const selectedArea = e.target.value;
+                          const autoAssignedIds = systemUsers.filter((u: any) => u.handledAreas?.includes(selectedArea)).map((u: any) => u.id);
+                          setNewTaskData({...newTaskData, area: selectedArea, executorIds: autoAssignedIds});
+                        }}>
                           <option value="" disabled>Pilih Area...</option>
                           {AVAILABLE_AREAS.map(area => (
                             <option key={area} value={area}>{area}</option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini.</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                        <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                          {systemUsers.map(u => (
-                            <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                              <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
-                                onChange={(e) => {
-                                  const newIds = e.target.checked 
-                                    ? [...newTaskData.executorIds, u.id] 
-                                    : newTaskData.executorIds.filter(id => id !== u.id);
-                                  setNewTaskData({...newTaskData, executorIds: newIds});
-                                }}
-                                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                              {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                            </label>
-                          ))}
-                        </div>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini. (Anda bisa menyesuaikan di bawah jika perlu)</p>
                       </div>
                     )}
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                        {systemUsers.map(u => (
+                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                            <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
+                              onChange={(e) => {
+                                const newIds = e.target.checked 
+                                  ? [...newTaskData.executorIds, u.id] 
+                                  : newTaskData.executorIds.filter(id => id !== u.id);
+                                setNewTaskData({...newTaskData, executorIds: newIds});
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
                 
@@ -849,38 +852,41 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                 </div>
 
                 {editTaskData.ticketType === "REQUEST" && (
-                  <div>
-                    {editTaskData.supportType === "Master Data" ? (
+                  <div className="space-y-4">
+                    {editTaskData.supportType === "Master Data" && (
                       <div>
                         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
-                        <select className={inputClass} value={editTaskData.area || ""} onChange={(e) => setEditTaskData({...editTaskData, area: e.target.value})}>
+                        <select className={inputClass} value={editTaskData.area || ""} onChange={(e) => {
+                          const selectedArea = e.target.value;
+                          const autoAssignedIds = systemUsers.filter((u: any) => u.handledAreas?.includes(selectedArea)).map((u: any) => u.id);
+                          setEditTaskData({...editTaskData, area: selectedArea, executorIds: autoAssignedIds});
+                        }}>
                           <option value="" disabled>Pilih Area...</option>
                           {AVAILABLE_AREAS.map(area => (
                             <option key={area} value={area}>{area}</option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini.</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                        <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                          {systemUsers.map(u => (
-                            <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                              <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
-                                onChange={(e) => {
-                                  const newIds = e.target.checked 
-                                    ? [...(editTaskData.executorIds || []), u.id] 
-                                    : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
-                                  setEditTaskData({...editTaskData, executorIds: newIds});
-                                }}
-                                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                              {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                            </label>
-                          ))}
-                        </div>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini. (Anda bisa menyesuaikan di bawah jika perlu)</p>
                       </div>
                     )}
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                        {systemUsers.map(u => (
+                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                            <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
+                              onChange={(e) => {
+                                const newIds = e.target.checked 
+                                  ? [...(editTaskData.executorIds || []), u.id] 
+                                  : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
+                                setEditTaskData({...editTaskData, executorIds: newIds});
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
                 
