@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized. Only admins can create users.' }, { status: 403 });
     }
 
-    const { name, email, password, jobDesk, role, telegramUsername } = await request.json();
+    const { name, email, password, jobDesk, role, telegramUsername, handledAreas } = await request.json();
 
     if (!name || !email || !password || !jobDesk || !role) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
@@ -47,9 +47,10 @@ export async function POST(request: Request) {
         password: hashedPassword,
         jobDesk,
         role,
-        telegramUsername
+        telegramUsername,
+        handledAreas: handledAreas || []
       },
-      select: { id: true, name: true, email: true, jobDesk: true, role: true, telegramUsername: true }
+      select: { id: true, name: true, email: true, jobDesk: true, role: true, telegramUsername: true, handledAreas: true }
     });
 
     return NextResponse.json({ success: true, user: newUser });

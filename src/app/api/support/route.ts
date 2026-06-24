@@ -39,7 +39,23 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { taskName, supportType, module, startDate, endDate, issue, solution, status, attachment, priority, ticketType, requesterName, executorIds, link } = body;
+    const { taskName, supportType, module, startDate, endDate, issue, solution, status, attachment, priority, ticketType, requesterName, executorIds, link, area } = body;
+
+    let finalExecutorIds = executorIds || [];
+    
+    if (ticketType === "REQUEST" && supportType === "Master Data" && area) {
+       const areaExecutors = await prisma.user.findMany({
+          where: {
+             handledAreas: {
+                has: area
+             }
+          },
+          select: { id: true }
+       });
+       if (areaExecutors.length > 0) {
+         finalExecutorIds = areaExecutors.map(u => u.id);
+       }
+    }
 
     const ticket = await prisma.supportTicket.create({
       data: {
@@ -57,10 +73,11 @@ export async function POST(req: Request) {
         link: link || null,
         ticketType: ticketType || "DAILY_ACTIVITY",
         requesterName: requesterName || null,
-        executors: executorIds && executorIds.length > 0 ? { connect: executorIds.map((id: string) => ({ id })) } : undefined
+        area: area || null,
+        executors: finalExecutorIds && finalExecutorIds.length > 0 ? { connect: finalExecutorIds.map((id: string) => ({ id })) } : undefined
       },
       include: {
-        executors: { select: { name: true } }
+        executors: { select: { name: true, telegramUsername: true } }
       }
     });
 
@@ -71,8 +88,13 @@ export async function POST(req: Request) {
     const { formatHtmlForTelegram, sendTelegramMessage } = await import("@/lib/telegram");
     const cleanIssue = formatHtmlForTelegram(ticket.issue);
     if (ticket.ticketType === "REQUEST") {
-      const executorNames = ticket.executors.map((e: any) => e.name).join(", ") || "Belum ditentukan";
-      const message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Dibuat Oleh:</b> ${reporter}\n<b>Tugas Untuk:</b> ${executorNames}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
+      const executorTags = ticket.executors.map((e: any) => {
+        if (e.telegramUsername) {
+           return e.telegramUsername.startsWith('@') ? e.telegramUsername : `@${e.telegramUsername}`;
+        }
+        return e.name;
+      }).join(", ") || "Belum ditentukan";
+      const message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Dibuat Oleh:</b> ${reporter}\n<b>Tugas Untuk:</b> ${executorTags}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
       
       const replyMarkup = {
         inline_keyboard: [

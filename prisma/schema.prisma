@@ -17,6 +17,7 @@ model User {
   jobDesk   String
   role      String   // "Admin" | "Staff"
   telegramUsername String? // Untuk integrasi webhook telegram
+  handledAreas String[] // Untuk auto-assign Master Data
   tasks     Task[]
   timeLogs  TimeLog[]
   supportTickets SupportTicket[] @relation("SupportCreator")
@@ -90,6 +91,7 @@ model SupportTicket {
   taskName      String
   supportType   String
   module        String
+  area          String?  // Untuk tiket kategori Master Data
   startDate     DateTime
   endDate       DateTime?
   issue         String?

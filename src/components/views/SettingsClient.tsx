@@ -167,10 +167,18 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
 function UserManagement({ users, inputClass }: { users: any[], inputClass: string }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] as string[] });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const error = "";
+  const [errorState, setError] = useState("");
   const router = useRouter();
+
+  const AVAILABLE_AREAS = [
+    "JATENG 1", "JATENG 2", "JATENG 3", "KALBAR", "KALTIM", "KALSELTENG", "DENPASAR", 
+    "JAKARTA 1", "JAKARTA 2", "JAKARTA 3", "JAKARTA 4", "JAKARTA 5", "JAKARTA 6", "JAKARTA 7", 
+    "KAM PROJECT", "MEDAN & ACEH RAYA", "TANGERANG", "SURABAYA 1", "SURABAYA 2", "MALANG", 
+    "SULAWESI 1", "SULAWESI 2", "SULAWESI 3", "JAWA BARAT 1", "JAWA BARAT 2", "SUMBANGSEL 1", "SUMBANGSEL 2"
+  ];
 
   const handleSubmitUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,7 +197,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
       if (!res.ok) throw new Error(data.error);
       setIsAdding(false);
       setEditingUser(null);
-      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" });
+      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] });
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -216,7 +224,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-slate-800">User List</h2>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "" }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Add User
         </button>
       </div>
@@ -224,7 +232,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
       {(isAdding || editingUser) && (
         <div className="p-6 bg-blue-50/30 border-b border-gray-100">
           <form onSubmit={handleSubmitUser} className="space-y-4">
-            {error && <div className="text-red-500 text-xs font-semibold">{error}</div>}
+            {errorState && <div className="text-red-500 text-xs font-semibold">{errorState}</div>}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Name</label>
@@ -257,6 +265,28 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                   </div>
                   <input type="text" value={formData.telegramUsername} onChange={e => setFormData({...formData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username" />
                 </div>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Handled Areas (For Auto-Assign Master Data)</label>
+              <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-white max-h-48 overflow-y-auto">
+                {AVAILABLE_AREAS.map(area => (
+                  <label key={area} className="flex items-center gap-1.5 text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-100 cursor-pointer hover:bg-gray-100">
+                    <input 
+                      type="checkbox" 
+                      checked={formData.handledAreas.includes(area)}
+                      onChange={(e) => {
+                        const newAreas = e.target.checked 
+                          ? [...formData.handledAreas, area]
+                          : formData.handledAreas.filter(a => a !== area);
+                        setFormData({...formData, handledAreas: newAreas});
+                      }}
+                      className="w-3 h-3 text-blue-600 rounded border-gray-300"
+                    />
+                    {area}
+                  </label>
+                ))}
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -298,7 +328,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "" }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", handledAreas: u.handledAreas || [] }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleDeleteUser(u.id, u.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
