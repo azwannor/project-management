@@ -27,7 +27,7 @@ export default async function SettingsPage() {
   if (currentUser.role?.toLowerCase() === "admin") {
     allUsers = await prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, createdAt: true },
+      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, createdAt: true, handledAreas: true },
     });
   }
 
