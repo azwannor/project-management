@@ -25,7 +25,7 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     requesterName: "",
     executorIds: [] as string[],
     taskName: "",
-    supportType: "Hardware & Software Support",
+    supportType: "User Admin",
     module: "Sistem AI",
     customModule: "",
     startDate: new Date(),
@@ -35,7 +35,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     status: "Done",
     priority: "Normal",
     attachment: "",
-    link: ""
+    link: "",
+    area: ""
   };
 
   const [newTaskData, setNewTaskData] = useState(defaultTaskData);
@@ -56,7 +57,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
         body: JSON.stringify({
           ...newTaskData,
           status: newTaskData.ticketType === "REQUEST" ? "Not Started" : newTaskData.status,
-          module: finalModule
+          module: finalModule,
+          area: newTaskData.supportType === "Master Data" ? newTaskData.area : null
         })
       });
       setNewTaskData(defaultTaskData);
@@ -115,7 +117,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
           ticketType: editTaskData.ticketType,
           requesterName: editTaskData.requesterName,
           executorIds: editTaskData.executors?.map((e: any) => e.id) || [],
-          link: editTaskData.link
+          link: editTaskData.link,
+          area: editTaskData.supportType === "Master Data" ? editTaskData.area : null
         })
       });
       setEditingTicket(null);
@@ -153,27 +156,58 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
       ticketType: ticket.ticketType || "DAILY_ACTIVITY",
       requesterName: ticket.requesterName || "",
       executorIds: ticket.executors ? ticket.executors.map((e: any) => e.id) : [],
-      link: ticket.link || ""
+      link: ticket.link || "",
+      area: ticket.area || ""
     });
   };
 
-  const supportTypeOptions = [
-    { value: "Hardware & Software Support", label: "Hardware & Software Support" },
-    { value: "Network & Infrastructure", label: "Network & Infrastructure" },
-    { value: "System Support & Maintenance", label: "System Support & Maintenance" },
-    { value: "User Admin & Master Data", label: "User Admin & Master Data" },
-    { value: "Data Processing & Reporting", label: "Data Processing & Reporting" },
-    { value: "System Development & Planning", label: "System Development & Planning" },
-    { value: "IT Asset Management", label: "IT Asset Management" },
-    { value: "IT Management & Coordination", label: "IT Management & Coordination" }
+  const CATEGORY_MAP: Record<string, string[]> = {
+    "Sistem AI": ["User Admin", "Master Data", "Proses Sales", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
+    "Sistem PIC": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
+    "Sistem HRIS": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
+    "Factory Sistem": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
+    "Website / Portal": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
+    "Jaringan (Wi-Fi/LAN/Mikrotik)": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
+    "Server & Data Center": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
+    "CCTV & Security System": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
+    "Telepon & PABX": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
+    "PC / Laptop": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
+    "Printer / Scanner": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
+    "Perangkat Lain (UPS, Monitor, dll)": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
+    "Email & Cloud (Google Workspace/AD)": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
+    "Permintaan Data / Report": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
+    "IT Asset Management": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
+    "General IT / Lainnya...": ["Rapat & Diskusi Internal", "Koordinasi Vendor", "Lainnya..."]
+  };
+
+  const MODULE_GROUPS = [
+    {
+      label: "Enterprise Systems & Applications",
+      options: ["Sistem AI", "Sistem PIC", "Sistem HRIS", "Factory Sistem", "Website / Portal"]
+    },
+    {
+      label: "Infrastructure & Network",
+      options: ["Jaringan (Wi-Fi/LAN/Mikrotik)", "Server & Data Center", "CCTV & Security System", "Telepon & PABX"]
+    },
+    {
+      label: "Hardware & End-User Devices",
+      options: ["PC / Laptop", "Printer / Scanner", "Perangkat Lain (UPS, Monitor, dll)"]
+    },
+    {
+      label: "Data, Account & IT Management",
+      options: ["Email & Cloud (Google Workspace/AD)", "Permintaan Data / Report", "IT Asset Management"]
+    },
+    {
+      label: "General",
+      options: ["General IT / Lainnya..."]
+    }
   ];
 
-  const moduleOptions = [
-    { value: "Sistem AI", label: "Sistem AI" },
-    { value: "Sistem PIC", label: "Sistem PIC" },
-    { value: "Sistem HRIS", label: "Sistem HRIS" },
-    { value: "Factory Sistem", label: "Factory Sistem" },
-    { value: "Lainnya", label: "Lainnya..." }
+  const AVAILABLE_AREAS = [
+    "JATENG 1", "JATENG 2", "JATENG 3", "KALBAR", "KALTIM", "KALSELTENG", "DENPASAR", 
+    "JAKARTA 1", "JAKARTA 2", "JAKARTA 3", "JAKARTA 4", "JAKARTA 5", "JAKARTA 6", "JAKARTA 7", 
+    "KAM PROJECT", "MEDAN & ACEH RAYA", "TANGERANG", "SURABAYA 1", "SURABAYA 2", "MALANG", 
+    "SULAWESI 1", "SULAWESI 2", "SULAWESI 3", "JAWA BARAT 1", "JAWA BARAT 2", "SUMBANGSEL 1", "SUMBANGSEL 2"
   ];
 
   const statusOptions = [
@@ -561,56 +595,96 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                 </div>
 
                 {newTaskData.ticketType === "REQUEST" && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
-                      <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
-                        value={newTaskData.requesterName} onChange={(e) => setNewTaskData({...newTaskData, requesterName: e.target.value})} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                        {systemUsers.map(u => (
-                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                            <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
-                              onChange={(e) => {
-                                const newIds = e.target.checked 
-                                  ? [...newTaskData.executorIds, u.id] 
-                                  : newTaskData.executorIds.filter(id => id !== u.id);
-                                setNewTaskData({...newTaskData, executorIds: newIds});
-                              }}
-                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
+                      value={newTaskData.requesterName} onChange={(e) => setNewTaskData({...newTaskData, requesterName: e.target.value})} />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan) <span className="text-red-500">*</span></label>
-                  <input autoFocus type="text" placeholder={newTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan / Kendala) <span className="text-red-500">*</span></label>
+                  <input autoFocus={newTaskData.ticketType !== "REQUEST"} type="text" placeholder={newTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
                     value={newTaskData.taskName} onChange={(e) => setNewTaskData({...newTaskData, taskName: e.target.value})}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddTicket(); if (e.key === 'Escape') setAddingTicket(false); }} />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                    <ModernSelect options={supportTypeOptions} value={newTaskData.supportType}
-                      onChange={(val) => setNewTaskData({...newTaskData, supportType: val})} className="w-full" />
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Module</label>
-                    <ModernSelect options={moduleOptions} value={newTaskData.module}
-                      onChange={(val) => setNewTaskData({...newTaskData, module: val})} className="w-full" />
-                    {newTaskData.module === "Lainnya" && (
+                    <select 
+                      className={inputClass}
+                      value={newTaskData.module}
+                      onChange={(e) => {
+                        const newModule = e.target.value;
+                        const validCategories = CATEGORY_MAP[newModule] || ["Lainnya..."];
+                        setNewTaskData({
+                           ...newTaskData, 
+                           module: newModule, 
+                           supportType: validCategories[0]
+                        });
+                      }}
+                    >
+                      {MODULE_GROUPS.map(group => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {newTaskData.module === "General IT / Lainnya..." && (
                       <input type="text" placeholder="Specify module..." className={`${inputClass} mt-2`}
                         value={newTaskData.customModule} onChange={(e) => setNewTaskData({...newTaskData, customModule: e.target.value})} />
                     )}
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+                    <select
+                      className={inputClass}
+                      value={newTaskData.supportType}
+                      onChange={(e) => setNewTaskData({...newTaskData, supportType: e.target.value})}
+                    >
+                      {(CATEGORY_MAP[newTaskData.module] || ["Lainnya..."]).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
+                {newTaskData.ticketType === "REQUEST" && (
+                  <div>
+                    {newTaskData.supportType === "Master Data" ? (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
+                        <select className={inputClass} value={newTaskData.area || ""} onChange={(e) => setNewTaskData({...newTaskData, area: e.target.value})}>
+                          <option value="" disabled>Pilih Area...</option>
+                          {AVAILABLE_AREAS.map(area => (
+                            <option key={area} value={area}>{area}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                        <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                          {systemUsers.map(u => (
+                            <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                              <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
+                                onChange={(e) => {
+                                  const newIds = e.target.checked 
+                                    ? [...newTaskData.executorIds, u.id] 
+                                    : newTaskData.executorIds.filter(id => id !== u.id);
+                                  setNewTaskData({...newTaskData, executorIds: newIds});
+                                }}
+                                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                              {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -719,56 +793,96 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                 </div>
 
                 {editTaskData.ticketType === "REQUEST" && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
-                      <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
-                        value={editTaskData.requesterName} onChange={(e) => setEditTaskData({...editTaskData, requesterName: e.target.value})} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                        {systemUsers.map(u => (
-                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                            <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
-                              onChange={(e) => {
-                                const newIds = e.target.checked 
-                                  ? [...(editTaskData.executorIds || []), u.id] 
-                                  : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
-                                setEditTaskData({...editTaskData, executorIds: newIds});
-                              }}
-                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
+                      value={editTaskData.requesterName} onChange={(e) => setEditTaskData({...editTaskData, requesterName: e.target.value})} />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan) <span className="text-red-500">*</span></label>
-                  <input autoFocus type="text" placeholder={editTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan / Kendala) <span className="text-red-500">*</span></label>
+                  <input autoFocus={editTaskData.ticketType !== "REQUEST"} type="text" placeholder={editTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
                     value={editTaskData.taskName} onChange={(e) => setEditTaskData({...editTaskData, taskName: e.target.value})}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateTicket(); if (e.key === 'Escape') { setEditingTicket(null); setEditTaskData(null); } }} />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                    <ModernSelect options={supportTypeOptions} value={editTaskData.supportType}
-                      onChange={(val) => setEditTaskData({...editTaskData, supportType: val})} className="w-full" />
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Module</label>
-                    <ModernSelect options={moduleOptions} value={editTaskData.module}
-                      onChange={(val) => setEditTaskData({...editTaskData, module: val})} className="w-full" />
-                    {editTaskData.module === "Lainnya" && (
+                    <select 
+                      className={inputClass}
+                      value={editTaskData.module}
+                      onChange={(e) => {
+                        const newModule = e.target.value;
+                        const validCategories = CATEGORY_MAP[newModule] || ["Lainnya..."];
+                        setEditTaskData({
+                           ...editTaskData, 
+                           module: newModule, 
+                           supportType: validCategories[0]
+                        });
+                      }}
+                    >
+                      {MODULE_GROUPS.map(group => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {editTaskData.module === "General IT / Lainnya..." && (
                       <input type="text" placeholder="Specify module..." className={`${inputClass} mt-2`}
                         value={editTaskData.customModule} onChange={(e) => setEditTaskData({...editTaskData, customModule: e.target.value})} />
                     )}
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+                    <select
+                      className={inputClass}
+                      value={editTaskData.supportType}
+                      onChange={(e) => setEditTaskData({...editTaskData, supportType: e.target.value})}
+                    >
+                      {(CATEGORY_MAP[editTaskData.module] || ["Lainnya..."]).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
+                {editTaskData.ticketType === "REQUEST" && (
+                  <div>
+                    {editTaskData.supportType === "Master Data" ? (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
+                        <select className={inputClass} value={editTaskData.area || ""} onChange={(e) => setEditTaskData({...editTaskData, area: e.target.value})}>
+                          <option value="" disabled>Pilih Area...</option>
+                          {AVAILABLE_AREAS.map(area => (
+                            <option key={area} value={area}>{area}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
+                        <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
+                          {systemUsers.map(u => (
+                            <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                              <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
+                                onChange={(e) => {
+                                  const newIds = e.target.checked 
+                                    ? [...(editTaskData.executorIds || []), u.id] 
+                                    : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
+                                  setEditTaskData({...editTaskData, executorIds: newIds});
+                                }}
+                                className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
+                              {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
