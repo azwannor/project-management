@@ -34,7 +34,7 @@ export default async function SupportPage() {
       orderBy: { createdAt: 'desc' }
     }),
     prisma.user.findMany({
-      select: { id: true, name: true, role: true, jobDesk: true },
+      select: { id: true, name: true, role: true, jobDesk: true, handledAreas: true },
       orderBy: { name: 'asc' }
     })
   ]);
