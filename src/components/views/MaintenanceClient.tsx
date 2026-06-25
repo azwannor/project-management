@@ -363,9 +363,29 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
                   options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Area *</label>
-                <ModernSelect value={formData.area} onChange={v => setFormData({ ...formData, area: v })}
-                  options={AVAILABLE_AREAS.map(a => ({ value: a, label: a }))} placeholder="Select area..." />
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-600">Division *</label>
+                  <button onClick={() => setShowDivisionModal(true)} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                    + New
+                  </button>
+                </div>
+                <ModernSelect value={formData.divisionId} onChange={v => setFormData({ ...formData, divisionId: v })}
+                  options={divisions.map((d: any) => ({ value: d.id, label: d.name }))} placeholder="Select division..." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Person Using Asset</label>
+                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={formData.person} onChange={e => setFormData({ ...formData, person: e.target.value })} placeholder="John Doe" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Location *</label>
+                <ModernSelect value={formData.location} onChange={v => setFormData({ ...formData, location: v })}
+                  options={AVAILABLE_LOCATIONS.map(l => ({ value: l, label: l }))} placeholder="Select location..." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Detailed Location</label>
+                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={formData.detailedLocation} onChange={e => setFormData({ ...formData, detailedLocation: e.target.value })} placeholder="Ruang Server Lt.2" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Brand</label>
@@ -381,11 +401,6 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Serial Number</label>
                 <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.serialNumber} onChange={e => setFormData({ ...formData, serialNumber: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} placeholder="Ruang Server Lt.2" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
