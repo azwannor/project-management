@@ -325,17 +325,17 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
             <h3 className="text-lg font-bold mb-4">{editingAsset ? "Edit Asset" : "Add New Asset"}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Kode Aset *</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Code *</label>
                 <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.assetCode} onChange={e => setFormData({ ...formData, assetCode: e.target.value })} placeholder="SRV-SBY1-001" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Nama Aset *</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Name *</label>
                 <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.assetName} onChange={e => setFormData({ ...formData, assetName: e.target.value })} placeholder="Server Database Surabaya 1" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Tipe Aset *</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Type *</label>
                 <ModernSelect value={formData.assetTypeId} onChange={v => setFormData({ ...formData, assetTypeId: v })}
                   options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
               </div>
@@ -360,7 +360,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
                   value={formData.serialNumber} onChange={e => setFormData({ ...formData, serialNumber: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Lokasi</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
                 <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} placeholder="Ruang Server Lt.2" />
               </div>
@@ -375,24 +375,24 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
                   options={[{ value: "", label: "None" }, ...systemUsers.map((u: any) => ({ value: u.id, label: u.name }))]} placeholder="Select PIC..." />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Tanggal Pembelian</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Purchase Date</label>
                 <DatePicker selected={formData.purchaseDate} onChange={(d: Date | null) => setFormData({ ...formData, purchaseDate: d })}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Garansi Sampai</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Warranty Until</label>
                 <DatePicker selected={formData.warrantyEndDate} onChange={(d: Date | null) => setFormData({ ...formData, warrantyEndDate: d })}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Catatan</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
                   rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
               <button onClick={() => { setShowForm(false); setEditingAsset(null); }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Batal</button>
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
               <button onClick={handleSubmit} disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -418,13 +418,13 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
                 <div><span className="text-gray-400 text-xs">Name</span><p className="font-medium">{detailAsset.assetName}</p></div>
                 <div><span className="text-gray-400 text-xs">Type</span><p>{detailAsset.assetType?.name}</p></div>
                 <div><span className="text-gray-400 text-xs">Area</span><p>{detailAsset.area}</p></div>
-                <div><span className="text-gray-400 text-xs">Lokasi</span><p>{detailAsset.location || "-"}</p></div>
+                <div><span className="text-gray-400 text-xs">Location</span><p>{detailAsset.location || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">Brand / Model</span><p>{detailAsset.brand || "-"} {detailAsset.model || ""}</p></div>
                 <div><span className="text-gray-400 text-xs">Serial Number</span><p className="font-mono text-xs">{detailAsset.serialNumber || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">PIC</span><p>{detailAsset.pic?.name || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">Pembelian</span><p>{detailAsset.purchaseDate ? new Date(detailAsset.purchaseDate).toLocaleDateString("id-ID") : "-"}</p></div>
               </div>
-              {detailAsset.notes && <div className="text-sm"><span className="text-gray-400 text-xs">Catatan</span><p className="mt-1 text-gray-600">{detailAsset.notes}</p></div>}
+              {detailAsset.notes && <div className="text-sm"><span className="text-gray-400 text-xs">Notes</span><p className="mt-1 text-gray-600">{detailAsset.notes}</p></div>}
 
               {/* Riwayat Maintenance */}
               <div className="mt-6 pt-4 border-t border-gray-100">
@@ -605,7 +605,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
                   </button>
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
-                  <button onClick={() => setExpandedId(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
+                  <button onClick={() => setExpandedId(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">Cancel</button>
                   <button onClick={() => saveChecklist(template.id)} disabled={isSubmitting}
                     className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
                     {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Simpan
@@ -624,18 +624,18 @@ function TemplateTab({ templates, assetTypes, router }: any) {
             <h3 className="text-lg font-bold mb-4">Buat Template Baru</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Nama Template *</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Template Name *</label>
                 <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={newTemplate.templateName} onChange={e => setNewTemplate({ ...newTemplate, templateName: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Tipe Aset *</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Type *</label>
                   <ModernSelect value={newTemplate.assetTypeId} onChange={v => setNewTemplate({ ...newTemplate, assetTypeId: v })}
                     options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Frekuensi (hari)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Frequency (days)</label>
                   <input type="number" min={1} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none"
                     value={newTemplate.defaultFrequencyDays} onChange={e => setNewTemplate({ ...newTemplate, defaultFrequencyDays: parseInt(e.target.value) || 1 })} />
                 </div>
@@ -666,7 +666,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowCreateForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Batal</button>
+              <button onClick={() => setShowCreateForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
               <button onClick={handleCreate} disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow-md">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Simpan
@@ -831,7 +831,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
               )}
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Batal</button>
+              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
               <button onClick={handleCreate} disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow-md">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Buat Jadwal
@@ -1024,7 +1024,7 @@ function LogTab({ logs, schedules, currentUser, isAdmin, router }: any) {
 
             {/* Findings */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Temuan / Catatan</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Findings / Notes</label>
               <textarea rows={3} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none resize-none"
                 value={logForm.findings} onChange={e => setLogForm({ ...logForm, findings: e.target.value })} placeholder="Deskripsikan temuan selama maintenance..." />
             </div>
@@ -1057,7 +1057,7 @@ function LogTab({ logs, schedules, currentUser, isAdmin, router }: any) {
             </label>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <button onClick={() => { setShowLogForm(false); setSelectedSchedule(null); }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Batal</button>
+              <button onClick={() => { setShowLogForm(false); setSelectedSchedule(null); }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
               <button onClick={handleSubmitLog} disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 shadow-md">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Submit Log
