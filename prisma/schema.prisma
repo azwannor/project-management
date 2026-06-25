@@ -22,6 +22,9 @@ model User {
   timeLogs  TimeLog[]
   supportTickets SupportTicket[] @relation("SupportCreator")
   assignedSupportTickets SupportTicket[] @relation("SupportExecutors")
+  assignedSchedules      MaintenanceSchedule[] @relation("ScheduleExecutors")
+  maintenanceLogs        MaintenanceLog[]
+  picAssets              Asset[]
   comments       Comment[]
   commentReadStatuses CommentReadStatus[]
   notifications  Notification[]
@@ -164,3 +167,127 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// ==========================================
+// Maintenance Rutin Infrastruktur IT Module
+// ==========================================
+
+enum AssetStatus {
+  ACTIVE
+  IN_REPAIR
+  INACTIVE
+  RETIRED
+}
+
+enum ScheduleType {
+  RECURRING
+  ADHOC
+}
+
+enum ScheduleStatus {
+  UPCOMING
+  DUE
+  OVERDUE
+  DONE
+}
+
+enum OverallCondition {
+  BAIK
+  PERLU_PERHATIAN
+  BERMASALAH
+}
+
+model AssetType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  assets    Asset[]
+  templates MaintenanceTemplate[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Asset {
+  id              String       @id @default(uuid())
+  assetCode       String       @unique
+  assetName       String
+  assetTypeId     String
+  assetType       AssetType    @relation(fields: [assetTypeId], references: [id])
+  brand           String?
+  model           String?
+  serialNumber    String?
+  area            String       // Mengikuti pattern existing (String, bukan relasi ke model Area)
+  location        String?
+  status          AssetStatus  @default(ACTIVE)
+  purchaseDate    DateTime?
+  warrantyEndDate DateTime?
+  picUserId       String?
+  pic             User?        @relation(fields: [picUserId], references: [id])
+  notes           String?
+  schedules       MaintenanceSchedule[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model MaintenanceTemplate {
+  id                   String    @id @default(uuid())
+  templateName         String
+  assetTypeId          String
+  assetType            AssetType @relation(fields: [assetTypeId], references: [id])
+  defaultFrequencyDays Int
+  reminderOffsetDays   Int       // Default otomatis berdasarkan defaultFrequencyDays, bisa di-override Admin
+  checklistItems       ChecklistItemMaster[]
+  schedules            MaintenanceSchedule[]
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model ChecklistItemMaster {
+  id          String              @id @default(uuid())
+  templateId  String
+  template    MaintenanceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  itemText    String
+  order       Int
+  isRequired  Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model MaintenanceSchedule {
+  id                String         @id @default(uuid())
+  scheduleType      ScheduleType
+  assetId           String
+  asset             Asset          @relation(fields: [assetId], references: [id])
+  templateId        String?
+  template          MaintenanceTemplate? @relation(fields: [templateId], references: [id])
+  frequencyDays     Int?
+  nextDueDate       DateTime
+  status            ScheduleStatus @default(UPCOMING)
+  assignedExecutors User[]         @relation("ScheduleExecutors") // Pattern sama dengan SupportTicket.executors
+  logs              MaintenanceLog[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+}
+
+model MaintenanceLog {
+  id                String           @id @default(uuid())
+  scheduleId        String
+  schedule          MaintenanceSchedule @relation(fields: [scheduleId], references: [id])
+  executedById      String
+  executedBy        User             @relation(fields: [executedById], references: [id])
+  executionDate     DateTime         @default(now())
+  checklistResults  ChecklistResult[]
+  overallCondition  OverallCondition
+  findings          String?
+  followUpNeeded    Boolean          @default(false)
+  supportTicketId   String?          // Relasi opsional ke SupportTicket (String saja, FK di Fase 3)
+  attachment        String?
+  createdAt         DateTime         @default(now())
+}
+
+model ChecklistResult {
+  id           String         @id @default(uuid())
+  logId        String
+  log          MaintenanceLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  itemText     String         // Snapshot dari checklist master saat eksekusi (agar histori tidak berubah jika template diedit)
+  checked      Boolean        @default(false)
+  note         String?
+}

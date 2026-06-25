@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, Headset, Settings, LogOut, Menu, X, Activity } from "lucide-react";
+import { LayoutDashboard, Headset, Settings, LogOut, Menu, X, Activity, Wrench } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
 
 function SidebarContent() {
@@ -30,6 +30,11 @@ function SidebarContent() {
       name: "Support & Operasional",
       href: "/support",
       icon: Headset,
+    },
+    {
+      name: "Maintenance",
+      href: "/maintenance",
+      icon: Wrench,
     },
   ];
 

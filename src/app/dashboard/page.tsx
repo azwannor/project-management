@@ -21,17 +21,25 @@ export default async function DashboardPage() {
 
   if (!currentUser) redirect("/login");
 
-  const [projects, tasks, supportTickets, users] = await Promise.all([
+  const [projects, tasks, supportTickets, users, maintenanceSchedules, assets] = await Promise.all([
     prisma.project.findMany(),
     prisma.task.findMany({ include: { project: true } }),
     prisma.supportTicket.findMany({ include: { user: true, executors: true } }),
     prisma.user.findMany({ select: { id: true, name: true, role: true } }),
+    prisma.maintenanceSchedule.findMany({
+      include: {
+        asset: { select: { assetName: true, assetCode: true, area: true } },
+        template: { select: { templateName: true } },
+        logs: { select: { executionDate: true } },
+      },
+    }),
+    prisma.asset.findMany({
+      select: { id: true, status: true },
+    }),
   ]);
 
   return (
     <div className="min-h-screen p-6 md:p-10 text-gray-900">
-
-
       {/* Main Content Area */}
       <DashboardClient 
         currentUser={currentUser}
@@ -39,6 +47,8 @@ export default async function DashboardPage() {
         tasks={tasks}
         supportTickets={supportTickets}
         users={users}
+        maintenanceSchedules={maintenanceSchedules}
+        assets={assets}
       />
     </div>
   );

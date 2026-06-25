@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderKanban, CheckSquare, Headset, Users, Activity, Clock, BarChart3, TrendingUp, Calendar, AlertCircle } from "lucide-react";
+import { FolderKanban, CheckSquare, Headset, Users, Activity, Clock, BarChart3, TrendingUp, Calendar, AlertCircle, Wrench } from "lucide-react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area
@@ -9,9 +9,10 @@ import {
 import { startOfDay, startOfWeek, startOfMonth, formatDistanceToNow, format } from "date-fns";
 
 export default function DashboardClient({ 
-  currentUser, projects, tasks, supportTickets, users 
+  currentUser, projects, tasks, supportTickets, users, maintenanceSchedules = [], assets = [] 
 }: { 
-  currentUser: any, projects: any[], tasks: any[], supportTickets: any[], users: any[] 
+  currentUser: any, projects: any[], tasks: any[], supportTickets: any[], users: any[],
+  maintenanceSchedules?: any[], assets?: any[]
 }) {
   const [timeRange, setTimeRange] = useState("ALL"); // ALL, TODAY, WEEK, MONTH
 
@@ -298,6 +299,101 @@ export default function DashboardClient({
         </div>
 
       </div>
+
+      {/* Maintenance Section */}
+      {maintenanceSchedules.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-blue-600" /> Maintenance Overview
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Compliance Rate */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Compliance Rate</p>
+              {(() => {
+                const done = maintenanceSchedules.filter((s: any) => s.status === "DONE");
+                const onTime = done.filter((s: any) => {
+                  const log = s.logs?.[0];
+                  if (!log) return false;
+                  return new Date(log.executionDate) <= new Date(s.nextDueDate);
+                });
+                const rate = done.length > 0 ? Math.round((onTime.length / done.length) * 100) : 0;
+                return (
+                  <div>
+                    <div className="flex items-end gap-2 mb-3">
+                      <span className="text-4xl font-bold text-slate-800 font-mono">{rate}%</span>
+                      <span className="text-xs text-slate-400 mb-1">{onTime.length}/{done.length} tepat waktu</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2.5">
+                      <div className="bg-emerald-500 h-2.5 rounded-full transition-all" style={{ width: `${rate}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Upcoming Maintenance */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Upcoming (7 Hari)</p>
+              {(() => {
+                const now = new Date();
+                const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                const upcoming = maintenanceSchedules.filter((s: any) =>
+                  s.status !== "DONE" && new Date(s.nextDueDate) <= in7
+                ).sort((a: any, b: any) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime()).slice(0, 5);
+                return upcoming.length === 0 ? (
+                  <p className="text-sm text-slate-400">Tidak ada jadwal dalam 7 hari ke depan</p>
+                ) : (
+                  <div className="space-y-2">
+                    {upcoming.map((s: any) => (
+                      <div key={s.id} className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{s.asset?.assetName}</p>
+                          <p className="text-[10px] text-slate-400">{s.template?.templateName || "Ad-hoc"}</p>
+                        </div>
+                        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          s.status === "OVERDUE" ? "bg-red-100 text-red-700 border-red-200" :
+                          s.status === "DUE" ? "bg-amber-100 text-amber-700 border-amber-200" :
+                          "bg-blue-100 text-blue-700 border-blue-200"
+                        }`}>
+                          {new Date(s.nextDueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Asset Status */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Aset per Status</p>
+              {(() => {
+                const counts: Record<string, number> = { ACTIVE: 0, IN_REPAIR: 0, INACTIVE: 0, RETIRED: 0 };
+                assets.forEach((a: any) => { counts[a.status] = (counts[a.status] || 0) + 1; });
+                const colors: Record<string, string> = { ACTIVE: "bg-emerald-500", IN_REPAIR: "bg-amber-500", INACTIVE: "bg-slate-400", RETIRED: "bg-red-500" };
+                const total = assets.length || 1;
+                return (
+                  <div className="space-y-2">
+                    {Object.entries(counts).map(([status, count]) => (
+                      <div key={status}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span className="font-medium text-slate-600">{status}</span>
+                          <span className="font-bold text-slate-800">{count}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5">
+                          <div className={`${colors[status]} h-1.5 rounded-full transition-all`} style={{ width: `${(count / total) * 100}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
