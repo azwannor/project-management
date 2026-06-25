@@ -46,8 +46,13 @@ export default async function MaintenancePage() {
       orderBy: { nextDueDate: "asc" },
       include: {
         asset: {
-          select: { id: true, assetCode: true, assetName: true, area: true },
-          include: { assetType: { select: { id: true, name: true } } },
+          select: { 
+            id: true, 
+            assetCode: true, 
+            assetName: true, 
+            area: true,
+            assetType: { select: { id: true, name: true } }
+          },
         },
         template: { select: { id: true, templateName: true, defaultFrequencyDays: true, reminderOffsetDays: true, checklistItems: { orderBy: { order: "asc" } } } },
         assignedExecutors: { select: { id: true, name: true } },
