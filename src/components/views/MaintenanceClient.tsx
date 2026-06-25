@@ -264,7 +264,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
             </button>
             <button onClick={() => { resetForm(); setEditingAsset(null); setShowForm(true); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20">
-              <Plus className="w-4 h-4" /> Tambah Aset
+              <Plus className="w-4 h-4" /> Add Asset
             </button>
           </div>
         )}
@@ -275,18 +275,18 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50/80 text-gray-600 text-left">
-              <th className="px-4 py-3 font-semibold">Kode</th>
-              <th className="px-4 py-3 font-semibold">Nama</th>
-              <th className="px-4 py-3 font-semibold">Tipe</th>
+              <th className="px-4 py-3 font-semibold">Code</th>
+              <th className="px-4 py-3 font-semibold">Name</th>
+              <th className="px-4 py-3 font-semibold">Type</th>
               <th className="px-4 py-3 font-semibold">Area</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">PIC</th>
-              {isAdmin && <th className="px-4 py-3 font-semibold text-right">Aksi</th>}
+              {isAdmin && <th className="px-4 py-3 font-semibold text-right">Action</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Tidak ada aset ditemukan</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Tidak ada assets ditemukan</td></tr>
             ) : filtered.map((asset: any) => (
               <tr key={asset.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer" onClick={() => fetchDetail(asset.id)}>
                 <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{asset.assetCode}</td>
@@ -316,7 +316,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400 mt-2">{filtered.length} dari {assets.length} aset</p>
+      <p className="text-xs text-gray-400 mt-2">{filtered.length} of {assets.length} assets</p>
 
       {/* Create/Edit Modal */}
       {showForm && (
@@ -413,10 +413,10 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-400 text-xs">Kode</span><p className="font-mono font-bold text-blue-700">{detailAsset.assetCode}</p></div>
+                <div><span className="text-gray-400 text-xs">Code</span><p className="font-mono font-bold text-blue-700">{detailAsset.assetCode}</p></div>
                 <div><span className="text-gray-400 text-xs">Status</span><p><span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[detailAsset.status]}`}>{detailAsset.status}</span></p></div>
-                <div><span className="text-gray-400 text-xs">Nama</span><p className="font-medium">{detailAsset.assetName}</p></div>
-                <div><span className="text-gray-400 text-xs">Tipe</span><p>{detailAsset.assetType?.name}</p></div>
+                <div><span className="text-gray-400 text-xs">Name</span><p className="font-medium">{detailAsset.assetName}</p></div>
+                <div><span className="text-gray-400 text-xs">Type</span><p>{detailAsset.assetType?.name}</p></div>
                 <div><span className="text-gray-400 text-xs">Area</span><p>{detailAsset.area}</p></div>
                 <div><span className="text-gray-400 text-xs">Lokasi</span><p>{detailAsset.location || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">Brand / Model</span><p>{detailAsset.brand || "-"} {detailAsset.model || ""}</p></div>
@@ -601,7 +601,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
                   ))}
                   <button onClick={() => setEditingItems([...editingItems, { itemText: "", order: editingItems.length + 1, isRequired: true }])}
                     className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium mt-1">
-                    <Plus className="w-3 h-3" /> Tambah Item
+                    <Plus className="w-3 h-3" /> Add Item
                   </button>
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
@@ -660,7 +660,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
                     ...newTemplate,
                     checklistItems: [...newTemplate.checklistItems, { itemText: "", order: newTemplate.checklistItems.length + 1, isRequired: true }]
                   })} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">
-                    <Plus className="w-3 h-3" /> Tambah Item
+                    <Plus className="w-3 h-3" /> Add Item
                   </button>
                 </div>
               </div>
@@ -816,7 +816,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Template *</label>
                   <ModernSelect value={formData.templateId} onChange={v => setFormData({ ...formData, templateId: v })}
                     options={matchingTemplates.map((t: any) => ({ value: t.id, label: t.templateName }))}
-                    placeholder={selectedAsset ? "Select template..." : "Pilih aset dulu"} />
+                    placeholder={selectedAsset ? "Select template..." : "Pilih assets dulu"} />
                 </div>
               )}
               <div>
