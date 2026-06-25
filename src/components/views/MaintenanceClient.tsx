@@ -144,7 +144,7 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     assetCode: "", assetName: "", assetTypeId: "", brand: "", model: "",
-    serialNumber: "", area: "", location: "", status: "ACTIVE",
+    serialNumber: "", divisionId: "", person: "", location: "", detailedLocation: "", status: "ACTIVE",
     purchaseDate: null as Date | null, warrantyEndDate: null as Date | null,
     picUserId: "", notes: ""
   });
