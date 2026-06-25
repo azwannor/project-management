@@ -95,7 +95,7 @@ export default function MaintenanceClient({
         <TemplateTab templates={initialTemplates} assetTypes={assetTypes} router={router} />
       )}
       {activeTab === "schedules" && (
-        <ScheduleTab schedules={initialSchedules} assets={initialAssets} templates={initialTemplates} assetTypes={assetTypes} isAdmin={isAdmin} currentUser={currentUser} router={router} />
+        <ScheduleTab schedules={initialSchedules} assets={initialAssets} templates={initialTemplates} assetTypes={assetTypes} isAdmin={isAdmin} currentUser={currentUser} router={router} divisions={divisions} />
       )}
       {activeTab === "logs" && (
         <LogTab logs={initialLogs} schedules={initialSchedules} currentUser={currentUser} isAdmin={isAdmin} router={router} />
@@ -722,7 +722,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
 /* ============================================================
    TAB 3: SCHEDULES
    ============================================================ */
-function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, currentUser, router }: any) {
+function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, currentUser, router, divisions }: any) {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterDivision, setFilterDivision] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -734,10 +734,10 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
   const filtered = useMemo(() => {
     return schedules.filter((s: any) => {
       if (filterStatus && s.status !== filterStatus) return false;
-      if (filterLocation && s.asset?.location !== filterLocation) return false;
+      if (filterDivision && s.asset?.divisionId !== filterDivision) return false;
       return true;
     });
-  }, [schedules, filterStatus, filterLocation]);
+  }, [schedules, filterStatus, filterDivision]);
 
   const selectedAsset = assets.find((a: any) => a.id === formData.assetId);
   const matchingTemplates = templates.filter((t: any) => selectedAsset && t.assetTypeId === selectedAsset.assetTypeId);
