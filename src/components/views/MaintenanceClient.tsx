@@ -301,6 +301,7 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
               <th className="px-4 py-3 font-semibold">Type</th>
               <th className="px-4 py-3 font-semibold">Division</th>
               <th className="px-4 py-3 font-semibold">User/Person</th>
+              <th className="px-4 py-3 font-semibold">Location</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">PIC</th>
               {isAdmin && <th className="px-4 py-3 font-semibold text-right">Action</th>}
@@ -316,6 +317,7 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
                 <td className="px-4 py-3 text-gray-500">{asset.assetType?.name}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{asset.division?.name || "-"}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{asset.person || "-"}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">{asset.location || "-"}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[asset.status] || ""}`}>
                     {asset.status}
@@ -495,6 +497,34 @@ function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router 
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Division Modal */}
+      {showDivisionModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowDivisionModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="font-bold text-gray-800">New Division</h3>
+              <button onClick={() => setShowDivisionModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Division Name *</label>
+                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={newDivisionName} onChange={e => setNewDivisionName(e.target.value)} placeholder="e.g. IT Support, HR" autoFocus />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setShowDivisionModal(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+                <button onClick={handleAddDivision} disabled={isSubmittingDivision || !newDivisionName.trim()} 
+                  className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50">
+                  {isSubmittingDivision ? "Saving..." : "Save Division"}
+                </button>
               </div>
             </div>
           </div>
