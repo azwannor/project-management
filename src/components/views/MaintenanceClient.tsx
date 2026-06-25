@@ -11,12 +11,7 @@ import ModernSelect from "../common/ModernSelect";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-const AVAILABLE_AREAS = [
-  "JATENG 1", "JATENG 2", "JATENG 3", "KALBAR", "KALTIM", "KALSELTENG", "DENPASAR",
-  "JAKARTA 1", "JAKARTA 2", "JAKARTA 3", "JAKARTA 4", "JAKARTA 5", "JAKARTA 6", "JAKARTA 7",
-  "KAM PROJECT", "MEDAN & ACEH RAYA", "TANGERANG", "SURABAYA 1", "SURABAYA 2", "MALANG",
-  "SULAWESI 1", "SULAWESI 2", "SULAWESI 3", "JAWA BARAT 1", "JAWA BARAT 2", "SUMBANGSEL 1", "SUMBANGSEL 2"
-];
+const AVAILABLE_LOCATIONS = ["HO Jakarta", "HO Makassar", "Pabrik", "Marketing"];
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-green-100 text-green-700 border-green-200",
@@ -47,10 +42,10 @@ const CONDITION_LABELS: Record<string, string> = {
 type Tab = "assets" | "templates" | "schedules" | "logs";
 
 export default function MaintenanceClient({
-  currentUser, assetTypes, assets: initialAssets, templates: initialTemplates,
+  currentUser, divisions, assetTypes, assets: initialAssets, templates: initialTemplates,
   schedules: initialSchedules, logs: initialLogs, systemUsers
 }: {
-  currentUser: any; assetTypes: any[]; assets: any[]; templates: any[];
+  currentUser: any; divisions: any[]; assetTypes: any[]; assets: any[]; templates: any[];
   schedules: any[]; logs: any[]; systemUsers: any[];
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("assets");
@@ -94,7 +89,7 @@ export default function MaintenanceClient({
 
       {/* Tab Content */}
       {activeTab === "assets" && (
-        <AssetTab assets={initialAssets} assetTypes={assetTypes} systemUsers={systemUsers} isAdmin={isAdmin} router={router} />
+        <AssetTab assets={initialAssets} divisions={divisions} assetTypes={assetTypes} systemUsers={systemUsers} isAdmin={isAdmin} router={router} />
       )}
       {activeTab === "templates" && isAdmin && (
         <TemplateTab templates={initialTemplates} assetTypes={assetTypes} router={router} />
@@ -112,9 +107,35 @@ export default function MaintenanceClient({
 /* ============================================================
    TAB 1: ASSET REGISTRY
    ============================================================ */
-function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
+function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router }: any) {
+  const [showDivisionModal, setShowDivisionModal] = useState(false);
+  const [newDivisionName, setNewDivisionName] = useState("");
+  const [isSubmittingDivision, setIsSubmittingDivision] = useState(false);
+
+  const handleAddDivision = async () => {
+    if (!newDivisionName.trim()) return;
+    setIsSubmittingDivision(true);
+    try {
+      const res = await fetch("/api/divisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newDivisionName.trim() }),
+      });
+      if (res.ok) {
+        setNewDivisionName("");
+        setShowDivisionModal(false);
+        router.refresh();
+      } else {
+        alert("Failed to add division");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSubmittingDivision(false);
+    }
+  };
   const [search, setSearch] = useState("");
-  const [filterArea, setFilterArea] = useState("");
+  const [filterDivision, setFilterDivision] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -133,12 +154,12 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
       if (search && !a.assetCode.toLowerCase().includes(search.toLowerCase()) &&
           !a.assetName.toLowerCase().includes(search.toLowerCase()) &&
           !(a.brand || "").toLowerCase().includes(search.toLowerCase())) return false;
-      if (filterArea && a.area !== filterArea) return false;
+      if (filterDivision && a.divisionId !== filterDivision) return false;
       if (filterStatus && a.status !== filterStatus) return false;
       if (filterType && a.assetTypeId !== filterType) return false;
       return true;
     });
-  }, [assets, search, filterArea, filterStatus, filterType]);
+  }, [assets, search, filterDivision, filterStatus, filterType]);
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -148,7 +169,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
   const resetForm = () => {
     setFormData({
       assetCode: "", assetName: "", assetTypeId: "", brand: "", model: "",
-      serialNumber: "", area: "", location: "", status: "ACTIVE", purchaseDate: null,
+      serialNumber: "", divisionId: "", person: "", location: "", detailedLocation: "", status: "ACTIVE", purchaseDate: null,
       warrantyEndDate: null, picUserId: "", notes: ""
     });
   };
@@ -158,7 +179,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
     setFormData({
       assetCode: asset.assetCode, assetName: asset.assetName, assetTypeId: asset.assetTypeId,
       brand: asset.brand || "", model: asset.model || "", serialNumber: asset.serialNumber || "",
-      area: asset.area, location: asset.location || "", status: asset.status,
+      divisionId: asset.divisionId || "", person: asset.person || "", location: asset.location || "", detailedLocation: asset.detailedLocation || "", status: asset.status,
       purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate) : null,
       warrantyEndDate: asset.warrantyEndDate ? new Date(asset.warrantyEndDate) : null,
       picUserId: asset.picUserId || "", notes: asset.notes || ""
@@ -205,7 +226,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
   };
 
   const handleSubmit = async () => {
-    if (!formData.assetCode.trim() || !formData.assetName.trim() || !formData.assetTypeId || !formData.area) return;
+    if (!formData.assetCode.trim() || !formData.assetName.trim() || !formData.assetTypeId || !formData.divisionId) return;
     setIsSubmitting(true);
     try {
       const url = editingAsset ? `/api/assets/${editingAsset.id}` : "/api/assets";
@@ -247,8 +268,8 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
             value={search} onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="All Areas"
-          options={[{ value: "", label: "All Areas" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
+        <ModernSelect value={filterDivision} onChange={setFilterDivision} placeholder="All Divisions"
+          options={[{ value: "", label: "All Divisions" }, ...divisions.map((d: any) => ({ value: d.id, label: d.name }))]}
           className="w-44" />
         <ModernSelect value={filterStatus} onChange={setFilterStatus} placeholder="All Status"
           options={[{ value: "", label: "All Status" }, ...(["ACTIVE", "IN_REPAIR", "INACTIVE", "RETIRED"].map(s => ({ value: s, label: s })))]}
@@ -278,7 +299,8 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
               <th className="px-4 py-3 font-semibold">Code</th>
               <th className="px-4 py-3 font-semibold">Name</th>
               <th className="px-4 py-3 font-semibold">Type</th>
-              <th className="px-4 py-3 font-semibold">Area</th>
+              <th className="px-4 py-3 font-semibold">Division</th>
+              <th className="px-4 py-3 font-semibold">User/Person</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">PIC</th>
               {isAdmin && <th className="px-4 py-3 font-semibold text-right">Action</th>}
@@ -292,7 +314,8 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
                 <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{asset.assetCode}</td>
                 <td className="px-4 py-3 font-medium">{asset.assetName}</td>
                 <td className="px-4 py-3 text-gray-500">{asset.assetType?.name}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{asset.area}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">{asset.division?.name || "-"}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">{asset.person || "-"}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[asset.status] || ""}`}>
                     {asset.status}
@@ -417,8 +440,10 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
                 <div><span className="text-gray-400 text-xs">Status</span><p><span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[detailAsset.status]}`}>{detailAsset.status}</span></p></div>
                 <div><span className="text-gray-400 text-xs">Name</span><p className="font-medium">{detailAsset.assetName}</p></div>
                 <div><span className="text-gray-400 text-xs">Type</span><p>{detailAsset.assetType?.name}</p></div>
-                <div><span className="text-gray-400 text-xs">Area</span><p>{detailAsset.area}</p></div>
+                <div><span className="text-gray-400 text-xs">Division</span><p>{detailAsset.division?.name || "-"}</p></div>
+                <div><span className="text-gray-400 text-xs">Person</span><p>{detailAsset.person || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">Location</span><p>{detailAsset.location || "-"}</p></div>
+                <div><span className="text-gray-400 text-xs">Detailed Location</span><p>{detailAsset.detailedLocation || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">Brand / Model</span><p>{detailAsset.brand || "-"} {detailAsset.model || ""}</p></div>
                 <div><span className="text-gray-400 text-xs">Serial Number</span><p className="font-mono text-xs">{detailAsset.serialNumber || "-"}</p></div>
                 <div><span className="text-gray-400 text-xs">PIC</span><p>{detailAsset.pic?.name || "-"}</p></div>
@@ -684,7 +709,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
    ============================================================ */
 function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, currentUser, router }: any) {
   const [filterStatus, setFilterStatus] = useState("");
-  const [filterArea, setFilterArea] = useState("");
+  const [filterDivision, setFilterDivision] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -694,10 +719,10 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
   const filtered = useMemo(() => {
     return schedules.filter((s: any) => {
       if (filterStatus && s.status !== filterStatus) return false;
-      if (filterArea && s.asset?.area !== filterArea) return false;
+      if (filterLocation && s.asset?.location !== filterLocation) return false;
       return true;
     });
-  }, [schedules, filterStatus, filterArea]);
+  }, [schedules, filterStatus, filterLocation]);
 
   const selectedAsset = assets.find((a: any) => a.id === formData.assetId);
   const matchingTemplates = templates.filter((t: any) => selectedAsset && t.assetTypeId === selectedAsset.assetTypeId);
@@ -749,8 +774,8 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="All Areas"
-          options={[{ value: "", label: "All Areas" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
+        <ModernSelect value={filterDivision} onChange={setFilterDivision} placeholder="All Divisions"
+          options={[{ value: "", label: "All Divisions" }, ...divisions.map((d: any) => ({ value: d.id, label: d.name }))]}
           className="w-44" />
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 ml-auto">
@@ -769,7 +794,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
               <div className="min-w-0">
                 <p className="font-semibold text-sm truncate">{s.asset?.assetName}</p>
                 <p className="text-xs text-gray-400 truncate">
-                  {s.asset?.assetCode} · {s.template?.templateName || "Ad-hoc"} · {s.asset?.area}
+                  {s.asset?.assetCode} · {s.template?.templateName || "Ad-hoc"} · {s.asset?.division?.name || s.asset?.location || "-"}
                 </p>
               </div>
             </div>
@@ -826,7 +851,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
               </div>
               {selectedAsset && (
                 <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded-lg">
-                  ℹ️ Executor akan otomatis di-assign berdasarkan area: <strong>{selectedAsset.area}</strong>
+                  ℹ️ Executor akan otomatis di-assign berdasarkan location: <strong>{selectedAsset.location || "-"}</strong>
                 </p>
               )}
             </div>

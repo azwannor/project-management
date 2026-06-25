@@ -20,6 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       where: { id },
       include: {
         assetType: { select: { id: true, name: true } },
+        division: { select: { id: true, name: true } },
         pic: { select: { id: true, name: true } },
         schedules: {
           orderBy: { nextDueDate: "desc" },
@@ -67,8 +68,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const body = await req.json();
     const {
-      assetCode, assetName, assetTypeId, brand, model, serialNumber,
-      area, location, status, purchaseDate, warrantyEndDate, picUserId, notes
+      assetCode, assetName, assetTypeId, divisionId, brand, model, serialNumber,
+      person, location, detailedLocation, status, purchaseDate, warrantyEndDate, picUserId, notes
     } = body;
 
     const dataToUpdate: any = {};
@@ -79,8 +80,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (brand !== undefined) dataToUpdate.brand = brand || null;
     if (model !== undefined) dataToUpdate.model = model || null;
     if (serialNumber !== undefined) dataToUpdate.serialNumber = serialNumber || null;
-    if (area !== undefined) dataToUpdate.area = area.trim();
+    if (divisionId !== undefined) dataToUpdate.divisionId = divisionId.trim();
+    if (person !== undefined) dataToUpdate.person = person || null;
     if (location !== undefined) dataToUpdate.location = location || null;
+    if (detailedLocation !== undefined) dataToUpdate.detailedLocation = detailedLocation || null;
     if (status !== undefined) dataToUpdate.status = status;
     if (purchaseDate !== undefined) dataToUpdate.purchaseDate = purchaseDate ? new Date(purchaseDate) : null;
     if (warrantyEndDate !== undefined) dataToUpdate.warrantyEndDate = warrantyEndDate ? new Date(warrantyEndDate) : null;
@@ -92,6 +95,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       data: dataToUpdate,
       include: {
         assetType: { select: { id: true, name: true } },
+        division: { select: { id: true, name: true } },
         pic: { select: { id: true, name: true } },
       },
     });

@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     prisma.user.findMany({ select: { id: true, name: true, role: true } }),
     prisma.maintenanceSchedule.findMany({
       include: {
-        asset: { select: { assetName: true, assetCode: true, area: true } },
+        asset: { select: { assetName: true, assetCode: true, location: true, division: { select: { id: true, name: true } } } },
         template: { select: { templateName: true } },
         logs: { select: { executionDate: true } },
       },

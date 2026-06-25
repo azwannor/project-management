@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const assetId = searchParams.get("assetId");
-    const area = searchParams.get("area");
+    const divisionId = searchParams.get("divisionId");
     const scheduleType = searchParams.get("scheduleType");
 
     const where: any = {};
@@ -25,8 +25,8 @@ export async function GET(req: Request) {
     if (status) where.status = status;
     if (assetId) where.assetId = assetId;
     if (scheduleType) where.scheduleType = scheduleType;
-    if (area) {
-      where.asset = { area };
+    if (divisionId) {
+      where.asset = { divisionId };
     }
 
     // Staff hanya bisa lihat schedule yang di-assign ke mereka
@@ -41,7 +41,7 @@ export async function GET(req: Request) {
       orderBy: { nextDueDate: "asc" },
       include: {
         asset: {
-          select: { id: true, assetCode: true, assetName: true, area: true },
+          select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } },
           include: { assetType: { select: { id: true, name: true } } },
         },
         template: { select: { id: true, templateName: true, defaultFrequencyDays: true } },
@@ -90,10 +90,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "templateId is required for RECURRING schedules" }, { status: 400 });
     }
 
-    // Ambil asset untuk dapatkan area (digunakan untuk auto-assign)
+    // Ambil asset untuk dapatkan location (digunakan untuk auto-assign)
     const asset = await prisma.asset.findUnique({
       where: { id: assetId },
-      select: { id: true, area: true, assetName: true },
+      select: { id: true, location: true, assetName: true },
     });
     if (!asset) {
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });
@@ -112,18 +112,18 @@ export async function POST(req: Request) {
     }
 
     // Auto-assign executors jika tidak disediakan
-    // Reuse logic dari modul Support: cari User yang handledAreas mengandung area asset
+    // Reuse logic dari modul Support: cari User yang handledAreas mengandung location asset
     let finalExecutorIds = executorIds || [];
-    if (finalExecutorIds.length === 0) {
-      const areaExecutors = await prisma.user.findMany({
+    if (finalExecutorIds.length === 0 && asset.location) {
+      const locationExecutors = await prisma.user.findMany({
         where: {
           handledAreas: {
-            has: asset.area,
+            has: asset.location,
           },
         },
         select: { id: true },
       });
-      finalExecutorIds = areaExecutors.map((u: { id: string }) => u.id);
+      finalExecutorIds = locationExecutors.map((u: { id: string }) => u.id);
     }
 
     const schedule = await prisma.maintenanceSchedule.create({
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
       },
       include: {
         asset: {
-          select: { id: true, assetCode: true, assetName: true, area: true },
+          select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } },
         },
         template: { select: { id: true, templateName: true } },
         assignedExecutors: { select: { id: true, name: true } },

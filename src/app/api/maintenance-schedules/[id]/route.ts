@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       where: { id },
       include: {
         asset: {
-          select: { id: true, assetCode: true, assetName: true, area: true, location: true },
+          select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } },
           include: { assetType: { select: { id: true, name: true } } },
         },
         template: {
@@ -94,7 +94,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       where: { id },
       data: updateData,
       include: {
-        asset: { select: { id: true, assetCode: true, assetName: true, area: true } },
+        asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } } },
         template: { select: { id: true, templateName: true } },
         assignedExecutors: { select: { id: true, name: true } },
       },

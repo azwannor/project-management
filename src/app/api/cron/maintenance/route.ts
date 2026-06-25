@@ -28,7 +28,7 @@ export async function GET(req: Request) {
         status: { not: "DONE" },
       },
       include: {
-        asset: { select: { id: true, assetCode: true, assetName: true, area: true } },
+        asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { name: true } } } },
         template: { select: { reminderOffsetDays: true, templateName: true } },
         assignedExecutors: { select: { id: true, name: true, telegramUsername: true } },
       },
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
             // Telegram Notif
             if (executor.telegramUsername) {
               const tgUsername = executor.telegramUsername.startsWith('@') ? executor.telegramUsername : `@${executor.telegramUsername}`;
-              const tgMessage = `⚠️ <b>MAINTENANCE OVERDUE!</b> ⚠️\n\nMaintenance for the following asset is <b>OVERDUE!</b>\n\n📌 <b>Asset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Area:</b> ${schedule.asset.area}\n⏳ <b>Overdue:</b> ${daysOverdue} Days (Due Date: ${dueDate.toLocaleDateString("en-US")})\n👤 <b>Executor:</b> ${tgUsername}\n\nPlease perform the maintenance immediately and log the results into the system!`;
+              const tgMessage = `⚠️ <b>MAINTENANCE OVERDUE!</b> ⚠️\n\nMaintenance for the following asset is <b>OVERDUE!</b>\n\n📌 <b>Asset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Location:</b> ${schedule.asset.location || "-"} (${schedule.asset.division?.name || "-"})\n⏳ <b>Overdue:</b> ${daysOverdue} Days (Due Date: ${dueDate.toLocaleDateString("en-US")})\n👤 <b>Executor:</b> ${tgUsername}\n\nPlease perform the maintenance immediately and log the results into the system!`;
               await sendTelegramMessage(tgMessage, replyMarkup);
               telegramCount++;
             }
@@ -115,7 +115,7 @@ export async function GET(req: Request) {
             if (executor.telegramUsername) {
               const tgUsername = executor.telegramUsername.startsWith('@') ? executor.telegramUsername : `@${executor.telegramUsername}`;
               const dueText = daysUntilDue === 0 ? "HARI INI" : `dalam ${daysUntilDue} hari`;
-              const tgMessage = `🔔 <b>REMINDER MAINTENANCE</b> 🔔\n\nMaintenance rutin untuk aset berikut akan segera jatuh tempo.\n\n📌 <b>Aset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Area:</b> ${schedule.asset.area}\n⏳ <b>Jatuh Tempo:</b> ${dueDate.toLocaleDateString("id-ID")} (${dueText})\n👤 <b>Executor:</b> ${tgUsername}\n\nSilakan siapkan kebutuhan maintenance dan isi form jika sudah selesai.`;
+              const tgMessage = `🔔 <b>REMINDER MAINTENANCE</b> 🔔\n\nMaintenance rutin untuk aset berikut akan segera jatuh tempo.\n\n📌 <b>Aset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Location:</b> ${schedule.asset.location || "-"} (${schedule.asset.division?.name || "-"})\n⏳ <b>Jatuh Tempo:</b> ${dueDate.toLocaleDateString("id-ID")} (${dueText})\n👤 <b>Executor:</b> ${tgUsername}\n\nSilakan siapkan kebutuhan maintenance dan isi form jika sudah selesai.`;
               await sendTelegramMessage(tgMessage, replyMarkup);
               telegramCount++;
             }

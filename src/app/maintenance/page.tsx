@@ -21,7 +21,11 @@ export default async function MaintenancePage() {
 
   if (!currentUser) redirect("/login");
 
-  const [assetTypes, assets, templates, schedules, logs, allUsers] = await Promise.all([
+  const [divisions, assetTypes, assets, templates, schedules, logs, allUsers] = await Promise.all([
+    prisma.division.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { assets: true } } },
+    }),
     prisma.assetType.findMany({
       orderBy: { name: "asc" },
       include: { _count: { select: { assets: true, templates: true } } },
@@ -30,6 +34,7 @@ export default async function MaintenancePage() {
       orderBy: { createdAt: "desc" },
       include: {
         assetType: { select: { id: true, name: true } },
+        division: { select: { id: true, name: true } },
         pic: { select: { id: true, name: true } },
         _count: { select: { schedules: true } },
       },
@@ -50,7 +55,8 @@ export default async function MaintenancePage() {
             id: true, 
             assetCode: true, 
             assetName: true, 
-            area: true,
+            location: true,
+            division: { select: { id: true, name: true } },
             assetType: { select: { id: true, name: true } }
           },
         },
@@ -67,7 +73,7 @@ export default async function MaintenancePage() {
         schedule: {
           select: {
             id: true, scheduleType: true,
-            asset: { select: { id: true, assetCode: true, assetName: true, area: true } },
+            asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } } },
           },
         },
         checklistResults: true,
@@ -96,6 +102,7 @@ export default async function MaintenancePage() {
       <div className="glass-panel flex flex-col overflow-hidden p-6">
         <MaintenanceClient
           currentUser={currentUser}
+          divisions={divisions}
           assetTypes={assetTypes}
           assets={assets}
           templates={templates}

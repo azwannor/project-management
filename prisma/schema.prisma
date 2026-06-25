@@ -205,17 +205,28 @@ model AssetType {
   updatedAt DateTime @updatedAt
 }
 
+model Division {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  assets    Asset[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Asset {
   id              String       @id @default(uuid())
   assetCode       String       @unique
   assetName       String
   assetTypeId     String
   assetType       AssetType    @relation(fields: [assetTypeId], references: [id])
+  divisionId      String?
+  division        Division?    @relation(fields: [divisionId], references: [id])
   brand           String?
   model           String?
   serialNumber    String?
-  area            String       // Mengikuti pattern existing (String, bukan relasi ke model Area)
+  person          String?
   location        String?
+  detailedLocation String?
   status          AssetStatus  @default(ACTIVE)
   purchaseDate    DateTime?
   warrantyEndDate DateTime?

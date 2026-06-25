@@ -15,15 +15,15 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const area = searchParams.get("area");
+    const divisionId = searchParams.get("divisionId");
     const status = searchParams.get("status");
     const assetTypeId = searchParams.get("assetTypeId");
     const search = searchParams.get("search");
 
     const where: any = {};
 
-    if (area) {
-      where.area = area;
+    if (divisionId) {
+      where.divisionId = divisionId;
     }
 
     if (status) {
@@ -48,6 +48,7 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
       include: {
         assetType: { select: { id: true, name: true } },
+        division: { select: { id: true, name: true } },
         pic: { select: { id: true, name: true } },
         _count: {
           select: { schedules: true },
@@ -79,8 +80,8 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const {
-      assetCode, assetName, assetTypeId, brand, model, serialNumber,
-      area, location, status, purchaseDate, warrantyEndDate, picUserId, notes
+      assetCode, assetName, assetTypeId, divisionId, brand, model, serialNumber,
+      person, location, detailedLocation, status, purchaseDate, warrantyEndDate, picUserId, notes
     } = body;
 
     // Validasi field wajib
@@ -93,8 +94,8 @@ export async function POST(req: Request) {
     if (!assetTypeId) {
       return NextResponse.json({ error: "Asset type is required" }, { status: 400 });
     }
-    if (!area || !area.trim()) {
-      return NextResponse.json({ error: "Area is required" }, { status: 400 });
+    if (!divisionId || !divisionId.trim()) {
+      return NextResponse.json({ error: "Division is required" }, { status: 400 });
     }
 
     // Validasi AssetType exists
@@ -111,8 +112,10 @@ export async function POST(req: Request) {
         brand: brand || null,
         model: model || null,
         serialNumber: serialNumber || null,
-        area: area.trim(),
+        divisionId: divisionId.trim(),
+        person: person || null,
         location: location || null,
+        detailedLocation: detailedLocation || null,
         status: status || "ACTIVE",
         purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
         warrantyEndDate: warrantyEndDate ? new Date(warrantyEndDate) : null,
@@ -121,6 +124,7 @@ export async function POST(req: Request) {
       },
       include: {
         assetType: { select: { id: true, name: true } },
+        division: { select: { id: true, name: true } },
         pic: { select: { id: true, name: true } },
       },
     });

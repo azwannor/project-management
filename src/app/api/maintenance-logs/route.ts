@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       where: { id: scheduleId },
       include: {
         assignedExecutors: { select: { id: true } },
-        asset: { select: { id: true, assetCode: true, assetName: true, area: true } },
+        asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { name: true } } } },
         template: {
           select: {
             id: true,
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
           taskName: `[Follow-up Maintenance] ${schedule.asset.assetName} - ${schedule.asset.assetCode}`,
           supportType: "Maintenance & Server Check",
           module: "IT Asset Management",
-          area: schedule.asset.area,
+          area: schedule.asset.location,
           issue: findings || `Issue found during routine maintenance. Condition: ${overallCondition}`,
           priority: overallCondition === "BERMASALAH" ? "High" : "Normal",
           ticketType: "REQUEST",
@@ -222,7 +222,7 @@ export async function GET(req: Request) {
           select: {
             id: true,
             scheduleType: true,
-            asset: { select: { id: true, assetCode: true, assetName: true, area: true } },
+            asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { name: true } } } },
           },
         },
         checklistResults: true,

@@ -118,8 +118,7 @@ export async function POST(req: Request) {
             assetCode,
             assetName,
             assetTypeId,
-            area: matchedArea,
-            location,
+            location: matchedArea,
             serialNumber,
             purchaseDate,
             status: "ACTIVE"
