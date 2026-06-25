@@ -93,7 +93,7 @@ export async function POST(req: Request) {
            return e.telegramUsername.startsWith('@') ? e.telegramUsername : `@${e.telegramUsername}`;
         }
         return e.name;
-      }).join(", ") || "Belum ditentukan";
+      }).join(", ") || "Not assigned";
       const message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Dibuat Oleh:</b> ${reporter}\n<b>Tugas Untuk:</b> ${executorTags}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
       
       const replyMarkup = {

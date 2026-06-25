@@ -77,14 +77,14 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     if (assetType._count.assets > 0) {
       return NextResponse.json(
-        { error: `Tidak bisa dihapus. Masih ada ${assetType._count.assets} aset dengan tipe ini.` },
+        { error: `Cannot delete. There are still ${assetType._count.assets} assets with this type.` },
         { status: 400 }
       );
     }
 
     if (assetType._count.templates > 0) {
       return NextResponse.json(
-        { error: `Tidak bisa dihapus. Masih ada ${assetType._count.templates} template maintenance dengan tipe ini.` },
+        { error: `Cannot delete. There are still ${assetType._count.templates} maintenance templates with this type.` },
         { status: 400 }
       );
     }

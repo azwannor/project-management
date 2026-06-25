@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: "File excel tidak ditemukan" }, { status: 400 });
+      return NextResponse.json({ error: "Excel file not found" }, { status: 400 });
     }
 
     // Baca file stream menjadi buffer
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       // 1. Validasi Data Mandatory
       if (!assetCode || !assetName || !assetTypeName || !area) {
         failedCount++;
-        errors.push({ row: rowNum, assetCode: assetCode || "N/A", reason: "Kolom Wajib (Code, Name, Type, Area) kosong" });
+        errors.push({ row: rowNum, assetCode: assetCode || "N/A", reason: "Required Columns (Code, Name, Type, Area) are empty" });
         continue;
       }
 
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       const matchedArea = validAreas.find(a => a.toLowerCase() === area.toLowerCase());
       if (!matchedArea) {
         failedCount++;
-        errors.push({ row: rowNum, assetCode, reason: `Area '${area}' tidak valid` });
+        errors.push({ row: rowNum, assetCode, reason: `Area '${area}' is invalid` });
         continue;
       }
 

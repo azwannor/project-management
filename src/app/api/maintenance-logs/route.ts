@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     // Validasi field wajib
     if (!scheduleId) {
-      return NextResponse.json({ error: "scheduleId wajib diisi" }, { status: 400 });
+      return NextResponse.json({ error: "scheduleId is required" }, { status: 400 });
     }
     if (!overallCondition || !["BAIK", "PERLU_PERHATIAN", "BERMASALAH"].includes(overallCondition)) {
       return NextResponse.json({ error: "overallCondition harus BAIK, PERLU_PERHATIAN, atau BERMASALAH" }, { status: 400 });
@@ -43,18 +43,18 @@ export async function POST(req: Request) {
     });
 
     if (!schedule) {
-      return NextResponse.json({ error: "Schedule tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
     }
 
     if (schedule.status === "DONE") {
-      return NextResponse.json({ error: "Schedule sudah selesai (DONE). Tidak bisa submit log lagi." }, { status: 400 });
+      return NextResponse.json({ error: "Schedule is already DONE. Cannot submit log anymore." }, { status: 400 });
     }
 
     // Cek apakah user adalah salah satu assigned executor
     const isAssigned = schedule.assignedExecutors.some(e => e.id === session.userId);
     if (!isAssigned && session.role !== "Admin") {
       return NextResponse.json(
-        { error: "Anda tidak ter-assign sebagai executor untuk jadwal maintenance ini." },
+        { error: "You are not assigned as an executor for this maintenance schedule." },
         { status: 403 }
       );
     }
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
           supportType: "Maintenance & Server Check",
           module: "IT Asset Management",
           area: schedule.asset.area,
-          issue: findings || `Ditemukan masalah saat maintenance rutin. Kondisi: ${overallCondition}`,
+          issue: findings || `Issue found during routine maintenance. Condition: ${overallCondition}`,
           priority: overallCondition === "BERMASALAH" ? "High" : "Normal",
           ticketType: "REQUEST",
           requesterName: session.name,

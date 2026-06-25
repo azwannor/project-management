@@ -51,7 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (existingTicket && existingTicket.ticketType === "REQUEST" && existingTicket.priority !== "URGENT" && ticket.priority === "URGENT") {
       const reporter = existingTicket.user?.name || "Unknown";
       const requester = ticket.requesterName || reporter;
-      const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Belum ditentukan";
+      const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Not assigned";
       const { formatHtmlForTelegram } = await import("@/lib/telegram");
       const cleanIssue = formatHtmlForTelegram(ticket.issue);
       const message = `🚨 <b>URGENT TICKET DIUBAH</b> 🚨\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${requester}\n<b>Tugas Untuk:</b> ${executorsStr}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n\n<i>Status tiket telah diubah menjadi URGENT. Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
@@ -63,7 +63,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (existingTicket && existingTicket.ticketType === "REQUEST" && restData.status === "Done" && existingTicket.status !== "Done") {
       const reporter = existingTicket.user?.name || "Unknown";
       const requester = ticket.requesterName || reporter;
-      const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Belum ditentukan";
+      const executorsStr = ticket.executors?.map((e: any) => e.name).join(", ") || "Not assigned";
       const { formatHtmlForTelegram } = await import("@/lib/telegram");
       const cleanIssue = formatHtmlForTelegram(ticket.issue);
       const cleanSolution = formatHtmlForTelegram(ticket.solution);

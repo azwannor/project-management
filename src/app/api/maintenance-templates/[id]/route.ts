@@ -150,7 +150,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     if (template._count.schedules > 0) {
       return NextResponse.json(
-        { error: `Tidak bisa dihapus. Masih ada ${template._count.schedules} jadwal maintenance yang menggunakan template ini.` },
+        { error: `Cannot delete. There are still ${template._count.schedules} maintenance schedules using this template.` },
         { status: 400 }
       );
     }

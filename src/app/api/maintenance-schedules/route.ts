@@ -81,13 +81,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "scheduleType harus RECURRING atau ADHOC" }, { status: 400 });
     }
     if (!assetId) {
-      return NextResponse.json({ error: "assetId wajib diisi" }, { status: 400 });
+      return NextResponse.json({ error: "assetId is required" }, { status: 400 });
     }
     if (!nextDueDate) {
-      return NextResponse.json({ error: "nextDueDate wajib diisi" }, { status: 400 });
+      return NextResponse.json({ error: "nextDueDate is required" }, { status: 400 });
     }
     if (scheduleType === "RECURRING" && !templateId) {
-      return NextResponse.json({ error: "templateId wajib diisi untuk jadwal RECURRING" }, { status: 400 });
+      return NextResponse.json({ error: "templateId is required for RECURRING schedules" }, { status: 400 });
     }
 
     // Ambil asset untuk dapatkan area (digunakan untuk auto-assign)
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
       select: { id: true, area: true, assetName: true },
     });
     if (!asset) {
-      return NextResponse.json({ error: "Asset tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }
 
     // Resolve frequencyDays

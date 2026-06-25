@@ -87,8 +87,8 @@ export default async function MaintenancePage() {
             <Wrench className="w-8 h-8 text-blue-800" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 drop-shadow-sm">Maintenance Infrastruktur</h1>
-            <p className="text-sm text-gray-600 font-medium">Kelola aset, jadwal, dan checklist maintenance rutin infrastruktur IT.</p>
+            <h1 className="text-2xl font-bold text-gray-900 drop-shadow-sm">Infrastructure Maintenance</h1>
+            <p className="text-sm text-gray-600 font-medium">Manage IT infrastructure assets, schedules, and routine maintenance checklists.</p>
           </div>
         </div>
       </header>

@@ -43,7 +43,7 @@ export async function GET(req: Request) {
       
       const formUrl = `${appUrl}/maintenance?tab=logs`;
       const replyMarkup = {
-        inline_keyboard: [[{ text: "📝 Buka Form Maintenance", url: formUrl }]]
+        inline_keyboard: [[{ text: "📝 Open Maintenance Form", url: formUrl }]]
       };
 
       // --- OVERDUE: nextDueDate sudah lewat ---
@@ -66,7 +66,7 @@ export async function GET(req: Request) {
               data: {
                 userId: executor.id,
                 title: "⚠️ Maintenance OVERDUE",
-                message: `Maintenance "${schedule.asset.assetName}" (${schedule.asset.assetCode}) sudah lewat jatuh tempo ${daysOverdue} hari! Segera selesaikan.`,
+                message: `Maintenance for "${schedule.asset.assetName}" (${schedule.asset.assetCode}) is ${daysOverdue} days overdue! Please complete it immediately.`,
                 type: "DEADLINE",
                 link: `/maintenance/schedules/${schedule.id}`,
               },
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
             // Telegram Notif
             if (executor.telegramUsername) {
               const tgUsername = executor.telegramUsername.startsWith('@') ? executor.telegramUsername : `@${executor.telegramUsername}`;
-              const tgMessage = `⚠️ <b>MAINTENANCE OVERDUE!</b> ⚠️\n\nMaintenance untuk aset berikut <b>SUDAH LEWAT JATUH TEMPO!</b>\n\n📌 <b>Aset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Area:</b> ${schedule.asset.area}\n⏳ <b>Terlewat:</b> ${daysOverdue} Hari (Jatuh Tempo: ${dueDate.toLocaleDateString("id-ID")})\n👤 <b>Executor:</b> ${tgUsername}\n\nHarap segera lakukan maintenance dan catat hasilnya ke sistem!`;
+              const tgMessage = `⚠️ <b>MAINTENANCE OVERDUE!</b> ⚠️\n\nMaintenance for the following asset is <b>OVERDUE!</b>\n\n📌 <b>Asset:</b> ${schedule.asset.assetName} (${schedule.asset.assetCode})\n🏢 <b>Area:</b> ${schedule.asset.area}\n⏳ <b>Overdue:</b> ${daysOverdue} Days (Due Date: ${dueDate.toLocaleDateString("en-US")})\n👤 <b>Executor:</b> ${tgUsername}\n\nPlease perform the maintenance immediately and log the results into the system!`;
               await sendTelegramMessage(tgMessage, replyMarkup);
               telegramCount++;
             }

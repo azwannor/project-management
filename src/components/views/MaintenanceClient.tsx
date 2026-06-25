@@ -39,9 +39,9 @@ const CONDITION_COLORS: Record<string, string> = {
 };
 
 const CONDITION_LABELS: Record<string, string> = {
-  BAIK: "Baik",
-  PERLU_PERHATIAN: "Perlu Perhatian",
-  BERMASALAH: "Bermasalah",
+  BAIK: "Good",
+  PERLU_PERHATIAN: "Needs Attention",
+  BERMASALAH: "Issue/Problem",
 };
 
 type Tab = "assets" | "templates" | "schedules" | "logs";
@@ -220,7 +220,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
   };
 
   const handleRetire = async (id: string) => {
-    if (!confirm("Yakin ingin me-retire aset ini?")) return;
+    if (!confirm("Are you sure you want to retire this asset?")) return;
     try {
       await fetch(`/api/assets/${id}`, { method: "DELETE" });
       router.refresh();
@@ -242,19 +242,19 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            type="text" placeholder="Cari kode, nama, brand..."
+            type="text" placeholder="Search code, name, brand..."
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
             value={search} onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="Semua Area"
-          options={[{ value: "", label: "Semua Area" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
+        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="All Areas"
+          options={[{ value: "", label: "All Areas" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
           className="w-44" />
-        <ModernSelect value={filterStatus} onChange={setFilterStatus} placeholder="Semua Status"
-          options={[{ value: "", label: "Semua Status" }, ...(["ACTIVE", "IN_REPAIR", "INACTIVE", "RETIRED"].map(s => ({ value: s, label: s })))]}
+        <ModernSelect value={filterStatus} onChange={setFilterStatus} placeholder="All Status"
+          options={[{ value: "", label: "All Status" }, ...(["ACTIVE", "IN_REPAIR", "INACTIVE", "RETIRED"].map(s => ({ value: s, label: s })))]}
           className="w-40" />
-        <ModernSelect value={filterType} onChange={setFilterType} placeholder="Semua Tipe"
-          options={[{ value: "", label: "Semua Tipe" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
+        <ModernSelect value={filterType} onChange={setFilterType} placeholder="All Types"
+          options={[{ value: "", label: "All Types" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
           className="w-48" />
         {isAdmin && (
           <div className="flex gap-2">
@@ -322,7 +322,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
       {showForm && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowForm(false); setEditingAsset(null); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingAsset ? "Edit Aset" : "Tambah Aset Baru"}</h3>
+            <h3 className="text-lg font-bold mb-4">{editingAsset ? "Edit Asset" : "Add New Asset"}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Kode Aset *</label>
@@ -337,12 +337,12 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Tipe Aset *</label>
                 <ModernSelect value={formData.assetTypeId} onChange={v => setFormData({ ...formData, assetTypeId: v })}
-                  options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Pilih tipe..." />
+                  options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Area *</label>
                 <ModernSelect value={formData.area} onChange={v => setFormData({ ...formData, area: v })}
-                  options={AVAILABLE_AREAS.map(a => ({ value: a, label: a }))} placeholder="Pilih area..." />
+                  options={AVAILABLE_AREAS.map(a => ({ value: a, label: a }))} placeholder="Select area..." />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Brand</label>
@@ -372,17 +372,17 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">PIC</label>
                 <ModernSelect value={formData.picUserId} onChange={v => setFormData({ ...formData, picUserId: v })}
-                  options={[{ value: "", label: "Tidak ada" }, ...systemUsers.map((u: any) => ({ value: u.id, label: u.name }))]} placeholder="Pilih PIC..." />
+                  options={[{ value: "", label: "None" }, ...systemUsers.map((u: any) => ({ value: u.id, label: u.name }))]} placeholder="Select PIC..." />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Tanggal Pembelian</label>
                 <DatePicker selected={formData.purchaseDate} onChange={(d: Date | null) => setFormData({ ...formData, purchaseDate: d })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Pilih tanggal..." />
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Garansi Sampai</label>
                 <DatePicker selected={formData.warrantyEndDate} onChange={(d: Date | null) => setFormData({ ...formData, warrantyEndDate: d })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Pilih tanggal..." />
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Catatan</label>
@@ -396,7 +396,7 @@ function AssetTab({ assets, assetTypes, systemUsers, isAdmin, router }: any) {
               <button onClick={handleSubmit} disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {editingAsset ? "Update" : "Simpan"}
+                {editingAsset ? "Update" : "Save"}
               </button>
             </div>
           </div>
@@ -513,7 +513,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
   };
 
   const handleDelete = async (templateId: string) => {
-    if (!confirm("Yakin ingin menghapus template ini?")) return;
+    if (!confirm("Are you sure you want to delete this template?")) return;
     try {
       const res = await fetch(`/api/maintenance-templates/${templateId}`, { method: "DELETE" });
       if (!res.ok) { const err = await res.json(); alert(err.error); return; }
@@ -542,8 +542,8 @@ function TemplateTab({ templates, assetTypes, router }: any) {
   return (
     <div>
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <ModernSelect value={filterType} onChange={setFilterType} placeholder="Semua Tipe Aset"
-          options={[{ value: "", label: "Semua Tipe Aset" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
+        <ModernSelect value={filterType} onChange={setFilterType} placeholder="All Asset Types"
+          options={[{ value: "", label: "All Asset Types" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
           className="w-52" />
         <button onClick={() => setShowCreateForm(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 ml-auto">
@@ -566,11 +566,11 @@ function TemplateTab({ templates, assetTypes, router }: any) {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={e => { e.stopPropagation(); handleDuplicate(template.id); }}
-                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Duplikasi">
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Duplicate">
                   <Copy className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={e => { e.stopPropagation(); handleDelete(template.id); }}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 {expandedId === template.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
@@ -632,7 +632,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Tipe Aset *</label>
                   <ModernSelect value={newTemplate.assetTypeId} onChange={v => setNewTemplate({ ...newTemplate, assetTypeId: v })}
-                    options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Pilih tipe..." />
+                    options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Frekuensi (hari)</label>
@@ -647,7 +647,7 @@ function TemplateTab({ templates, assetTypes, router }: any) {
                     <div key={idx} className="flex items-center gap-2">
                       <span className="text-xs text-gray-400 w-5">{idx + 1}.</span>
                       <input className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none"
-                        value={item.itemText} placeholder="Item checklist..."
+                        value={item.itemText} placeholder="Checklist item..."
                         onChange={e => {
                           const items = [...newTemplate.checklistItems]; items[idx].itemText = e.target.value;
                           setNewTemplate({ ...newTemplate, checklistItems: items });
@@ -749,8 +749,8 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="Semua Area"
-          options={[{ value: "", label: "Semua Area" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
+        <ModernSelect value={filterArea} onChange={setFilterArea} placeholder="All Areas"
+          options={[{ value: "", label: "All Areas" }, ...AVAILABLE_AREAS.map(a => ({ value: a, label: a }))]}
           className="w-44" />
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 ml-auto">
@@ -777,7 +777,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
               <div className="text-right">
                 <p className="text-sm font-semibold">{new Date(s.nextDueDate).toLocaleDateString("id-ID")}</p>
                 <p className="text-[10px] text-gray-400">
-                  {s.assignedExecutors?.map((e: any) => e.name).join(", ") || "Belum ada executor"}
+                  {s.assignedExecutors?.map((e: any) => e.name).join(", ") || "No executors assigned"}
                 </p>
               </div>
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.scheduleType === "RECURRING" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
@@ -809,14 +809,14 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Aset *</label>
                 <ModernSelect value={formData.assetId} onChange={v => setFormData({ ...formData, assetId: v, templateId: "" })}
                   options={assets.filter((a: any) => a.status === "ACTIVE").map((a: any) => ({ value: a.id, label: `${a.assetCode} - ${a.assetName}` }))}
-                  placeholder="Pilih aset..." />
+                  placeholder="Select asset..." />
               </div>
               {formData.scheduleType === "RECURRING" && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Template *</label>
                   <ModernSelect value={formData.templateId} onChange={v => setFormData({ ...formData, templateId: v })}
                     options={matchingTemplates.map((t: any) => ({ value: t.id, label: t.templateName }))}
-                    placeholder={selectedAsset ? "Pilih template..." : "Pilih aset dulu"} />
+                    placeholder={selectedAsset ? "Select template..." : "Pilih aset dulu"} />
                 </div>
               )}
               <div>

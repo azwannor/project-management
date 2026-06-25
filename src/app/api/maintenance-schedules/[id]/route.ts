@@ -138,7 +138,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     if (schedule._count.logs > 0) {
       return NextResponse.json(
-        { error: `Tidak bisa dihapus. Sudah ada ${schedule._count.logs} log maintenance tercatat.` },
+        { error: `Cannot delete. There are already ${schedule._count.logs} maintenance logs recorded.` },
         { status: 400 }
       );
     }

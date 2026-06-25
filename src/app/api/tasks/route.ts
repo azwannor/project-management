@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     let message = `🎯 <b>PROJECT TASK BARU</b> 🎯\n\n`;
     message += `<b>Judul Tugas:</b> ${newTask.title}\n`;
     message += `<b>Project:</b> ${projectName}\n`;
-    message += `<b>Tugas Untuk:</b> ${body.executor || "Belum ditentukan"}\n`;
+    message += `<b>Tugas Untuk:</b> ${body.executor || "Not assigned"}\n`;
     message += `<b>Prioritas:</b> ${newTask.priority}\n`;
     if (cleanDoc && cleanDoc !== "-") {
       message += `<b>Deskripsi:</b>\n${cleanDoc}\n\n`;
