@@ -317,6 +317,7 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
   const [addingSubtask, setAddingSubtask] = useState<string | null>(null);
   const [addingProjectTask, setAddingProjectTask] = useState<string | null>(null);
   const [addingRootTask, setAddingRootTask] = useState(false);
+  const [confirmCompleteTask, setConfirmCompleteTask] = useState<{ id: string, newStatus: string, defaultDate: Date } | null>(null);
   
   // Drag and Drop State
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -392,11 +393,21 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
 
   // ─── Inline Update Handler ───
   const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    if (field === "status" && value === "Completed") {
+      setConfirmCompleteTask({ id: taskId, newStatus: value, defaultDate: new Date() });
+      return;
+    }
+    
     try {
+      const body: any = { [field]: value };
+      if (field === "status" && value !== "Completed") {
+        body.actualEndDate = null;
+      }
+      
       await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value })
+        body: JSON.stringify(body)
       });
       router.refresh();
     } catch (error) {
@@ -635,8 +646,19 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           </div>
           
           {/* End Date - Editable */}
-          <div>
-            <EditableDate value={task.endDate} taskId={task.id} field="endDate" onSave={handleInlineUpdate} minDate={new Date(task.startDate)} />
+          <div className="flex flex-col items-start justify-center">
+            {task.actualEndDate && task.status === 'Completed' ? (
+              <>
+                <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 mb-0.5 whitespace-nowrap" title="Actual End Date">
+                  {new Date(task.actualEndDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+                <span className="text-[9px] text-gray-400 line-through" title="Planned End Date">
+                  {new Date(task.endDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+              </>
+            ) : (
+              <EditableDate value={task.endDate} taskId={task.id} field="endDate" onSave={handleInlineUpdate} minDate={new Date(task.startDate)} />
+            )}
           </div>
 
           {/* Priority - Editable */}
@@ -982,6 +1004,43 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           entityTitle={activeCommentTask.title} 
           currentUserId={currentUser?.id} 
         />
+      )}
+
+      {confirmCompleteTask && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 w-full max-w-sm animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Konfirmasi Penyelesaian</h3>
+            <p className="text-sm text-slate-500 mb-5">Tentukan tanggal aktual selesai untuk task ini.</p>
+            <div className="mb-5">
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Tanggal Selesai Aktual</label>
+              <DatePicker 
+                selected={confirmCompleteTask.defaultDate} 
+                onChange={(date: Date | null) => date && setConfirmCompleteTask({...confirmCompleteTask, defaultDate: date})} 
+                dateFormat="dd MMM yyyy" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all" 
+                wrapperClassName="w-full" 
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmCompleteTask(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
+                Batal
+              </button>
+              <button onClick={async () => {
+                try {
+                  await fetch(`/api/tasks/${confirmCompleteTask.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: confirmCompleteTask.newStatus, actualEndDate: confirmCompleteTask.defaultDate.toISOString() })
+                  });
+                  setConfirmCompleteTask(null);
+                  router.refresh();
+                } catch (e) {}
+              }} className="px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl hover:shadow-lg hover:shadow-emerald-500/25 transition-all">
+                Simpan & Selesaikan
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

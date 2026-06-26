@@ -36,6 +36,7 @@ interface KanbanTask {
   priority: string;
   startDate: string;
   endDate: string;
+  actualEndDate?: string | null;
   documentation?: string;
   project?: { id: string; name: string } | null;
   projectId?: string | null;
@@ -98,6 +99,7 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
 
   // ─── Add Task State ───
   const [addingToColumn, setAddingToColumn] = useState<string | null>(null);
+  const [confirmCompleteTask, setConfirmCompleteTask] = useState<{ id: string, newStatus: string, defaultDate: Date } | null>(null);
   const [newTask, setNewTask] = useState({ title: "", priority: "Normal", projectId: "", documentation: "", executor: "", startDate: new Date(), endDate: new Date(Date.now() + 7 * 86400000) });
   const [isCreating, setIsCreating] = useState(false);
 
@@ -145,9 +147,13 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
 
   // ─── CRUD Handlers ───
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
+    if (newStatus === "Completed") {
+      setConfirmCompleteTask({ id: taskId, newStatus, defaultDate: new Date() });
+      return;
+    }
     setUpdatingTaskId(taskId);
     try {
-      await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }) });
+      await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus, actualEndDate: null }) });
       router.refresh();
     } catch (e) { console.error(e); } finally { setUpdatingTaskId(null); }
   };
@@ -175,18 +181,26 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
     if (!selectedTask) return;
     setIsSaving(true);
     try {
+      const body: any = {
+        title: editData.title,
+        priority: editData.priority,
+        status: editData.status,
+        documentation: editData.documentation,
+        executor: editData.executor || null,
+        startDate: editData.startDate.toISOString(),
+        endDate: editData.endDate.toISOString(),
+      };
+      
+      if (editData.status === "Completed" && selectedTask.status !== "Completed") {
+        body.actualEndDate = new Date().toISOString();
+      } else if (editData.status !== "Completed") {
+        body.actualEndDate = null;
+      }
+
       await fetch(`/api/tasks/${selectedTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: editData.title,
-          priority: editData.priority,
-          status: editData.status,
-          documentation: editData.documentation,
-          executor: editData.executor || null,
-          startDate: editData.startDate.toISOString(),
-          endDate: editData.endDate.toISOString(),
-        }),
+        body: JSON.stringify(body),
       });
       setSelectedTask(null);
       router.refresh();
@@ -468,9 +482,16 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
                           )}
                         </div>
 
-                        <div className={`flex items-center gap-1.5 text-[11px] font-medium ${overdue ? 'text-red-500' : 'text-gray-400'}`}>
+                        <div className={`flex items-center gap-1.5 text-[11px] font-medium ${task.actualEndDate && task.status === 'Completed' ? 'text-emerald-600' : (overdue ? 'text-red-500' : 'text-gray-400')}`}>
                           <CalendarDays className="w-3 h-3" />
-                          <span className="tabular-nums">{formatDate(task.startDate)} — {formatDate(task.endDate)}</span>
+                          {task.actualEndDate && task.status === 'Completed' ? (
+                            <>
+                              <span className="tabular-nums bg-emerald-50 px-1 rounded">{formatDate(task.startDate)} — {formatDate(task.actualEndDate)}</span>
+                              <span className="text-[9px] line-through ml-1 opacity-60">{formatDate(task.endDate)}</span>
+                            </>
+                          ) : (
+                            <span className="tabular-nums">{formatDate(task.startDate)} — {formatDate(task.endDate)}</span>
+                          )}
                           {overdue && <span className="text-[9px] font-bold uppercase tracking-wider bg-red-100 text-red-600 px-1.5 py-0.5 rounded ml-auto">Overdue</span>}
                         </div>
                       </div>
@@ -609,6 +630,44 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmCompleteTask && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 w-full max-w-sm animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Konfirmasi Penyelesaian</h3>
+            <p className="text-sm text-slate-500 mb-5">Tentukan tanggal aktual selesai untuk task ini.</p>
+            <div className="mb-5">
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Tanggal Selesai Aktual</label>
+              <DatePicker 
+                selected={confirmCompleteTask.defaultDate} 
+                onChange={(date: Date | null) => date && setConfirmCompleteTask({...confirmCompleteTask, defaultDate: date})} 
+                dateFormat="dd MMM yyyy" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all" 
+                wrapperClassName="w-full" 
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmCompleteTask(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
+                Batal
+              </button>
+              <button onClick={async () => {
+                setUpdatingTaskId(confirmCompleteTask.id);
+                try {
+                  await fetch(`/api/tasks/${confirmCompleteTask.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: confirmCompleteTask.newStatus, actualEndDate: confirmCompleteTask.defaultDate.toISOString() })
+                  });
+                  setConfirmCompleteTask(null);
+                  router.refresh();
+                } catch (e) {} finally { setUpdatingTaskId(null); }
+              }} className="px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl hover:shadow-lg hover:shadow-emerald-500/25 transition-all">
+                Simpan & Selesaikan
+              </button>
             </div>
           </div>
         </div>

@@ -20,6 +20,7 @@ export async function PATCH(
     if (body.documentation !== undefined) updateData.documentation = body.documentation || null;
     if (body.startDate !== undefined) updateData.startDate = new Date(body.startDate);
     if (body.endDate !== undefined) updateData.endDate = new Date(body.endDate);
+    if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate ? new Date(body.actualEndDate) : null;
     if (body.projectId !== undefined) updateData.projectId = body.projectId || null;
     if (body.executor !== undefined) updateData.executor = body.executor || null;
     if (body.parentId !== undefined) updateData.parentId = body.parentId;

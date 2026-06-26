@@ -54,6 +54,7 @@ model Task {
   title       String
   startDate   DateTime
   endDate     DateTime
+  actualEndDate DateTime?
   priority    String   // "Butuh Cepat" | "Normal"
   issue         String?  // Kendala
   solution      String?  // Solusi
