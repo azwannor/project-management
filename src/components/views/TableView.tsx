@@ -315,6 +315,7 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [activeCommentTask, setActiveCommentTask] = useState<{id: string, title: string} | null>(null);
   const [addingSubtask, setAddingSubtask] = useState<string | null>(null);
+  const [addingProjectTask, setAddingProjectTask] = useState<string | null>(null);
   const [addingRootTask, setAddingRootTask] = useState(false);
   
   // Drag and Drop State
@@ -423,15 +424,30 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
     if (!newTaskData.title.trim()) return;
     setIsSubmitting(true);
     let finalProjectId = newTaskData.projectId || (selectedProjectId !== "all" ? selectedProjectId : projects[0]?.id || "");
-    if (!finalProjectId && projects.length > 0) { setIsSubmitting(false); return; }
+    if (!finalProjectId && projects.length === 0) { setIsSubmitting(false); return; }
     try {
       await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newTaskData, projectId: finalProjectId || null, parentId: null })
+        body: JSON.stringify({ ...newTaskData, projectId: finalProjectId, parentId: null })
       });
-      setNewTaskData({ title: "", startDate: new Date(), endDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), priority: "Normal", status: "Not Started", documentation: "", projectId: "" });
+      setNewTaskData({ title: "", startDate: new Date(), endDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), priority: "Normal", status: "Not Started", documentation: "", projectId: "", executor: "" });
       setAddingRootTask(false);
+      router.refresh();
+    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
+  };
+
+  const handleAddProjectTask = async (projectId: string) => {
+    if (!newTaskData.title.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newTaskData, projectId, parentId: null })
+      });
+      setNewTaskData({ title: "", startDate: new Date(), endDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000), priority: "Normal", status: "Not Started", documentation: "", projectId: "", executor: "" });
+      setAddingProjectTask(null);
       router.refresh();
     } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
   };
@@ -868,10 +884,81 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
                   >
                     <div className="w-1 h-5 rounded-full bg-gradient-to-b from-blue-500 to-indigo-500" />
                     <span className="font-semibold text-slate-700 text-sm">{group.projectName}</span>
-                    <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm uppercase tracking-wider">
-                      {group.tasks.length} task{group.tasks.length > 1 ? 's' : ''}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm uppercase tracking-wider">
+                        {group.tasks.length} task{group.tasks.length > 1 ? 's' : ''}
+                      </span>
+                      <button onClick={() => {
+                        setNewTaskData({ ...newTaskData, title: "", projectId: group.projectId });
+                        setAddingProjectTask(group.projectId);
+                      }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="Add New Task to Project">
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                  {addingProjectTask === group.projectId && (
+                    <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50/60 to-indigo-50/40 px-4 py-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-4 shrink-0 border-l-2 border-b-2 border-blue-300 rounded-bl-md h-4 -mt-2 ml-4" />
+                        <input autoFocus type="text" placeholder="Task name..." className={`flex-1 ${inputClass}`}
+                          value={newTaskData.title} onChange={(e) => setNewTaskData({...newTaskData, title: e.target.value})}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddProjectTask(group.projectId); if (e.key === 'Escape') setAddingProjectTask(null); }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 ml-10">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Start</label>
+                          <DatePicker selected={newTaskData.startDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, startDate: date})} dateFormat="dd MMM yyyy" className={inputClass} wrapperClassName="w-full" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">End</label>
+                          <DatePicker selected={newTaskData.endDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, endDate: date})} dateFormat="dd MMM yyyy" minDate={newTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Priority</label>
+                          <ModernSelect options={priorityOptions} value={newTaskData.priority} onChange={(val) => setNewTaskData({...newTaskData, priority: val})} className="w-full" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Docs URL</label>
+                          <input type="url" placeholder="https://..." className={inputClass} value={newTaskData.documentation} onChange={(e) => setNewTaskData({...newTaskData, documentation: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Status</label>
+                          <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
+                        </div>
+                      </div>
+                      <div className="ml-10 mt-2">
+                        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Executor</label>
+                        <div className="flex flex-wrap gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-2 py-1.5 min-h-[36px]">
+                          {getExecutorOptions(group.projectId).map((opt: any) => {
+                            const selected = (newTaskData.executor || "").split(", ").filter(Boolean);
+                            const isChecked = selected.includes(opt.value);
+                            return (
+                              <label key={opt.value} className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full cursor-pointer transition-all border ${
+                                isChecked ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
+                              }`}>
+                                <input type="checkbox" checked={isChecked} className="hidden" onChange={() => {
+                                  const arr = selected.filter(Boolean);
+                                  const next = isChecked ? arr.filter(n => n !== opt.value) : [...arr, opt.value];
+                                  setNewTaskData({...newTaskData, executor: next.join(", ")});
+                                }} />
+                                {opt.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-blue-100/60">
+                        <button onClick={() => setAddingProjectTask(null)} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-gray-500 font-medium hover:text-gray-700 hover:bg-white rounded-lg transition-all">
+                          <XCircle className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                        <button onClick={() => handleAddProjectTask(group.projectId)} disabled={isSubmitting || !newTaskData.title.trim()}
+                          className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2 text-xs rounded-lg font-semibold hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0 transition-all">
+                          {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Task
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {group.tasks.map(task => renderRow(task, 0))}
                 </div>
               ))
