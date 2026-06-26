@@ -510,7 +510,16 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
     return uniqueOpts;
   };
 
-  const safeTasks = tasks || [];
+  const safeTasks = [...(tasks || [])].sort((a, b) => {
+    // 1. Completed di paling bawah
+    if (a.status === "Completed" && b.status !== "Completed") return 1;
+    if (a.status !== "Completed" && b.status === "Completed") return -1;
+    // 2. Selain itu, urutkan berdasarkan waktu pembuatan (createdAt ascending)
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateA - dateB;
+  });
+  
   const rootTasks = safeTasks.filter(t => !t.parentId);
   
   const tasksByProject: Record<string, { projectId: string; projectName: string; tasks: any[] }> = {};

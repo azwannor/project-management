@@ -129,7 +129,11 @@ export default function KanbanView({ tasks, projects = [], users = [], currentUs
     return uniqueOpts;
   };
 
-  const safeTasks: KanbanTask[] = tasks || [];
+  const safeTasks: KanbanTask[] = [...(tasks || [])].sort((a, b) => {
+    const dateA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : 0;
+    const dateB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : 0;
+    return dateA - dateB;
+  });
 
   const getTasksByStatus = (status: string) => safeTasks.filter(t => t.status === status);
 
