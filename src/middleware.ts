@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { decrypt } from '@/lib/auth';
+import { decrypt, encrypt } from '@/lib/auth';
 
 const protectedRoutes = ['/', '/dashboard', '/projects', '/settings', '/support'];
 
@@ -29,8 +29,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Biarkan request lanjut
-  return NextResponse.next();
+  // Biarkan request lanjut dan update rolling session
+  const response = NextResponse.next();
+  try {
+    const newToken = await encrypt(session);
+    response.cookies.set('session', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60, // 1 day
+      path: '/',
+    });
+  } catch (e) {
+    // Abaikan jika gagal memperbarui token
+  }
+
+  return response;
 }
 
 export const config = {
