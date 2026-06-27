@@ -525,28 +525,28 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                   </div>
                   
                   <div className="font-medium text-gray-800 text-sm md:text-xs min-w-0 flex flex-col md:flex-row items-start md:items-center gap-1.5 order-first md:order-none mb-2 md:mb-0">
-                    <div className="flex items-center gap-1.5 w-full pr-16 md:pr-0">
+                    <div className="flex items-center gap-1.5 w-full pr-16 md:pr-0 min-w-0">
                       {ticket.ticketType === "REQUEST" && (
                         <span className="shrink-0 inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQ</span>
                       )}
-                      <span className="truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
+                      <span className="block truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
                     </div>
                   </div>
                   <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.supportType || "-"}>
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Category</span>
-                    <span>{ticket.supportType || "-"}</span>
+                    <span className="block truncate">{ticket.supportType || "-"}</span>
                   </div>
                   <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.module || "-"}>
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Module</span>
-                    <span>{ticket.module || "-"}</span>
+                    <span className="block truncate">{ticket.module || "-"}</span>
                   </div>
                   <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.issue)}>
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Issue</span>
-                    <span className="truncate">{cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}</span>
+                    <span className="block truncate">{cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}</span>
                   </div>
                   <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.solution)}>
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Solution</span>
-                    <span className="truncate">{cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}</span>
+                    <span className="block truncate">{cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}</span>
                   </div>
                   <div className="min-w-0 flex items-center justify-between md:block mt-2 md:mt-0 pt-3 md:pt-0 border-t border-gray-100 md:border-0">
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Status</span>
