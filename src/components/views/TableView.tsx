@@ -605,26 +605,25 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
         className={`group ${isDragged ? "opacity-50" : ""} cursor-grab active:cursor-grabbing`}
       >
         <div 
-          className={`grid gap-3 items-center px-2 py-3 border-b transition-colors duration-150 ${level === 0 ? 'bg-white' : 'bg-gray-50/20'} ${isDropTarget ? 'border-b-2 border-b-blue-500 bg-blue-50/60' : 'border-gray-100/80 hover:bg-blue-50/30'}`} 
-          style={{ gridTemplateColumns: 'minmax(220px, 4fr) 2fr 2fr 2fr 2fr 2fr 1.5fr 2fr' }}
+          className={`flex flex-col md:grid gap-3 md:items-center p-3 md:px-2 md:py-3 border-b transition-colors duration-150 ${level === 0 ? 'bg-white shadow-sm rounded-lg mb-2 md:mb-0 md:shadow-none md:rounded-none' : 'bg-gray-50/20 ml-2 border-l-2 border-l-blue-200 md:ml-0 md:border-l-0'} ${isDropTarget ? 'border-b-2 border-b-blue-500 bg-blue-50/60' : 'border-gray-100/80 hover:bg-blue-50/30'} md:grid-cols-[minmax(220px,4fr)_2fr_2fr_2fr_2fr_2fr_1.5fr_2fr] relative`} 
         >
           {/* Task Name - Editable */}
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-4 shrink-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-start md:items-center gap-1.5 min-w-0 mb-2 md:mb-0">
+            <div className="hidden md:flex w-4 shrink-0 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <GripVertical className="w-3.5 h-3.5 text-gray-400" />
             </div>
-            <div style={{ width: `${level * 1.5}rem` }} className="shrink-0" />
+            <div style={{ width: `${level * 1.5}rem` }} className="hidden md:block shrink-0" />
             {hasChildren ? (
-              <button onClick={() => toggleRow(task.id)} className="p-0.5 hover:bg-gray-200/80 rounded-md text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+              <button onClick={() => toggleRow(task.id)} className="p-0.5 hover:bg-gray-200/80 rounded-md text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5 md:mt-0">
                 {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             ) : (
-              <div className="w-5 shrink-0" />
+              <div className="hidden md:block w-5 shrink-0" />
             )}
-            <div className={`flex-1 min-w-0 ${level === 0 ? 'font-semibold text-gray-900 text-sm' : 'font-medium text-gray-700 text-xs'}`}>
+            <div className={`flex-1 min-w-0 ${level === 0 ? 'font-semibold text-gray-900 text-sm md:text-sm text-base' : 'font-medium text-gray-800 md:text-gray-700 text-sm md:text-xs'}`}>
               <EditableText value={task.title} taskId={task.id} field="title" onSave={handleInlineUpdate} />
             </div>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div className="flex md:items-center gap-0.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0 flex-col md:flex-row absolute md:relative top-2 right-2 md:top-auto md:right-auto">
               <button 
                 onClick={() => setActiveCommentTask({id: task.id, title: task.title})} 
                 className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
@@ -645,33 +644,39 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           </div>
           
           {/* Project */}
-          <div className="text-xs text-gray-500 truncate" title={task.project?.name || "-"}>
-            {task.project?.name || "-"}
+          <div className="text-xs text-gray-500 truncate flex items-center justify-between md:justify-start" title={task.project?.name || "-"}>
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Project</span>
+            <span className="truncate">{task.project?.name || "-"}</span>
           </div>
 
           {/* Start Date - Editable */}
-          <div>
+          <div className="flex items-center justify-between md:justify-start">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Start Date</span>
             <EditableDate value={task.startDate} taskId={task.id} field="startDate" onSave={handleInlineUpdate} />
           </div>
           
           {/* End Date - Editable */}
-          <div className="flex flex-col items-start justify-center">
-            {task.actualEndDate && task.status === 'Completed' ? (
-              <>
-                <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 mb-0.5 whitespace-nowrap" title="Actual End Date">
-                  {new Date(task.actualEndDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
-                <span className="text-[9px] text-gray-400 line-through" title="Planned End Date">
-                  {new Date(task.endDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
-              </>
-            ) : (
-              <EditableDate value={task.endDate} taskId={task.id} field="endDate" onSave={handleInlineUpdate} minDate={new Date(task.startDate)} />
-            )}
+          <div className="flex flex-row md:flex-col items-center md:items-start justify-between md:justify-center">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">End Date</span>
+            <div className="flex flex-col items-end md:items-start">
+              {task.actualEndDate && task.status === 'Completed' ? (
+                <>
+                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 mb-0.5 whitespace-nowrap" title="Actual End Date">
+                    {new Date(task.actualEndDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                  <span className="text-[9px] text-gray-400 line-through" title="Planned End Date">
+                    {new Date(task.endDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                </>
+              ) : (
+                <EditableDate value={task.endDate} taskId={task.id} field="endDate" onSave={handleInlineUpdate} minDate={new Date(task.startDate)} />
+              )}
+            </div>
           </div>
 
           {/* Priority - Editable */}
-          <div className="flex items-center">
+          <div className="flex items-center justify-between md:justify-start">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Priority</span>
             <EditableSelect 
               value={task.priority || "Normal"} 
               taskId={task.id} 
@@ -683,7 +688,8 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           </div>
 
           {/* Executor - Editable (Multi) */}
-          <div className="flex items-center">
+          <div className="flex items-center justify-between md:justify-start">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Executor</span>
             <EditableMultiSelect 
               value={task.executor || ""} 
               taskId={task.id} 
@@ -694,12 +700,14 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
           </div>
 
           {/* Docs - Editable */}
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-between md:justify-center">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Docs</span>
             <EditableUrl value={task.documentation} taskId={task.id} onSave={handleInlineUpdate} />
           </div>
 
           {/* Status - Editable */}
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-between md:justify-end mt-2 pt-3 md:mt-0 md:pt-0 border-t border-gray-100 md:border-0">
+            <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Status</span>
             <EditableSelect 
               value={task.status} 
               taskId={task.id} 
@@ -789,12 +797,13 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
 
   return (
     <div className="overflow-hidden flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200/60">
-      <div className="overflow-x-auto flex-1 flex flex-col">
-        <div className="min-w-[1000px] flex-1 flex flex-col">
-          {/* ═══ Table Header ═══ */}
-          <div className="grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10"
-            style={{ gridTemplateColumns: 'minmax(220px, 4fr) 2fr 2fr 2fr 2fr 2fr 1.5fr 2fr' }}>
-            <div className="pl-8">Task Name</div>
+      <div className="overflow-x-auto flex-1 flex flex-col bg-gray-50 md:bg-transparent">
+        <div className="md:min-w-[1000px] flex-1 flex flex-col p-2 md:p-0">
+          {/* Table Header - Desktop Only */}
+          <div 
+            className="hidden md:grid gap-3 px-2 py-4 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-20 shadow-sm md:grid-cols-[minmax(220px,4fr)_2fr_2fr_2fr_2fr_2fr_1.5fr_2fr]"
+          >
+            <div className="pl-6">Task Name</div>
             <div>Project</div>
             <div>Start Date</div>
             <div>End Date</div>

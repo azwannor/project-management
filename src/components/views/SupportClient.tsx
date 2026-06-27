@@ -465,11 +465,10 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
       </div>
 
       <div className="overflow-hidden flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200/60">
-        <div className="overflow-x-auto flex-1 flex flex-col">
-          <div className="min-w-[1200px] flex-1 flex flex-col">
+        <div className="overflow-x-auto flex-1 flex flex-col bg-gray-50 md:bg-transparent">
+          <div className="md:min-w-[1200px] flex-1 flex flex-col p-2 md:p-0">
             {/* Table Header */}
-          <div className="grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10"
-            style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
+          <div className="hidden md:grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10 md:grid-cols-[1.2fr_1.2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_2.5fr_2.5fr_0.8fr_0.8fr_0.5fr]">
             <div>Start Time</div>
             <div>End Time</div>
             <div>Requester</div>
@@ -498,54 +497,79 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
             
             {displayedTickets.length > 0 ? (
               displayedTickets.map((ticket, i) => (
-                <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`grid gap-3 items-center px-4 py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b border-gray-100/80 cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/20'}`}
-                  style={{ gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1.5fr 1.5fr 1.2fr 1fr 2.5fr 2.5fr 0.8fr 0.8fr 0.5fr' }}>
+                <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`flex flex-col md:grid gap-3 p-4 md:px-4 md:py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b cursor-pointer ${i % 2 === 0 ? 'bg-white shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80' : 'bg-gray-50 md:bg-gray-50/20 shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80'} md:items-center md:grid-cols-[1.2fr_1.2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_2.5fr_2.5fr_0.8fr_0.8fr_0.5fr] group relative`}>
                   
-                  <div className="text-xs text-gray-700 tabular-nums min-w-0">{formatDate(ticket.startDate)}</div>
-                  <div className="text-xs text-gray-700 tabular-nums min-w-0">{formatDate(ticket.endDate)}</div>
+                  <div className="text-xs text-gray-700 tabular-nums min-w-0 flex items-center justify-between md:justify-start">
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Start Time</span>
+                    {formatDate(ticket.startDate)}
+                  </div>
+                  <div className="text-xs text-gray-700 tabular-nums min-w-0 flex items-center justify-between md:justify-start">
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">End Time</span>
+                    {formatDate(ticket.endDate)}
+                  </div>
                   
-                  <div className="text-xs min-w-0">
-                      <div className="font-semibold text-gray-800 text-[11px] truncate" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
-                      {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
-                    </div>
-                    <div className="text-xs min-w-0">
-                      <div className="font-semibold text-blue-700 text-[11px] truncate">
+                  <div className="text-xs min-w-0 flex items-center justify-between md:block">
+                      <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Requester</span>
+                      <div className="text-right md:text-left">
+                        <div className="font-semibold text-gray-800 text-[11px] truncate" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
+                        {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
+                      </div>
+                  </div>
+                  <div className="text-xs min-w-0 flex items-center justify-between md:block">
+                      <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Executor</span>
+                      <div className="font-semibold text-blue-700 text-[11px] truncate text-right md:text-left">
                         {ticket.ticketType === "REQUEST" 
                           ? (ticket.executors?.map((e:any) => e.name).join(", ") || "Belum ditentukan") 
                           : (ticket.user?.name || "-")}
                       </div>
-                    </div>
+                  </div>
                   
-                  <div className="font-medium text-gray-800 text-xs min-w-0 flex items-center gap-1.5">
-                    {ticket.ticketType === "REQUEST" && (
-                      <span className="shrink-0 inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQ</span>
-                    )}
-                    <span className="truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
+                  <div className="font-medium text-gray-800 text-sm md:text-xs min-w-0 flex flex-col md:flex-row items-start md:items-center gap-1.5 order-first md:order-none mb-2 md:mb-0">
+                    <div className="flex items-center gap-1.5 w-full pr-16 md:pr-0">
+                      {ticket.ticketType === "REQUEST" && (
+                        <span className="shrink-0 inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQ</span>
+                      )}
+                      <span className="truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.supportType || "-"}>{ticket.supportType || "-"}</div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={ticket.module || "-"}>{ticket.module || "-"}</div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={cleanHtmlText(ticket.issue)}>
-                    {cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}
+                  <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.supportType || "-"}>
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Category</span>
+                    <span>{ticket.supportType || "-"}</span>
                   </div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate" title={cleanHtmlText(ticket.solution)}>
-                    {cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}
+                  <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.module || "-"}>
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Module</span>
+                    <span>{ticket.module || "-"}</span>
                   </div>
-                  <div className="min-w-0">{renderStatus(ticket.status)}</div>
-                  <div className="min-w-0">{renderPriority(ticket.priority)}</div>
+                  <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.issue)}>
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Issue</span>
+                    <span className="truncate">{cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}</span>
+                  </div>
+                  <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.solution)}>
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Solution</span>
+                    <span className="truncate">{cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}</span>
+                  </div>
+                  <div className="min-w-0 flex items-center justify-between md:block mt-2 md:mt-0 pt-3 md:pt-0 border-t border-gray-100 md:border-0">
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Status</span>
+                    {renderStatus(ticket.status)}
+                  </div>
+                  <div className="min-w-0 flex items-center justify-between md:block">
+                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Priority</span>
+                    {renderPriority(ticket.priority)}
+                  </div>
 
-                  <div className="flex justify-end gap-1 opacity-0 hover:opacity-100 min-w-0">
+                  <div className="flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 min-w-0 absolute md:relative top-2 right-2 md:top-auto md:right-auto">
                     <button 
                       onClick={(e) => { e.stopPropagation(); setActiveCommentTicket({id: ticket.id, title: ticket.taskName}); }} 
-                      className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
+                      className="p-1.5 bg-indigo-50 md:bg-indigo-50/50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
                       title="Diskusi Ticket"
                     >
-                      <MessageSquare className="w-3.5 h-3.5" />
+                      <MessageSquare className="w-4 h-4 md:w-3.5 md:h-3.5" />
                       {ticket.comments?.[0] && (!ticket.commentReadStatuses?.[0] || new Date(ticket.comments[0].createdAt) > new Date(ticket.commentReadStatuses[0].lastReadAt)) && (
                         <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
                       )}
                     </button>
-                    <button onClick={(e) => handleDeleteTicket(ticket.id, e)} className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition-all" title="Delete Log">
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button onClick={(e) => handleDeleteTicket(ticket.id, e)} className="p-1.5 bg-red-50 md:bg-red-50/50 text-red-500 rounded-lg hover:bg-red-100 transition-all" title="Delete Log">
+                      <Trash2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                     </button>
                   </div>
                 </div>
