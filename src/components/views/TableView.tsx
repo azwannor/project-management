@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle, MessageSquare, GripVertical } from "lucide-react";
+import { ChevronRight, ChevronDown, Clock, AlertCircle, CheckCircle2, Table2, ExternalLink, Plus, Loader2, Trash2, Save, XCircle, Link2, CalendarDays, Pencil, Check, X, PauseCircle, UserCircle, MessageSquare, GripVertical, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -323,6 +323,7 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+  const [remindingTaskId, setRemindingTaskId] = useState<string | null>(null);
 
   const [newTaskData, setNewTaskData] = useState<{
     title: string;
@@ -388,6 +389,24 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
       setIsMoving(false);
       setDraggedTaskId(null);
       setDragOverTargetId(null);
+    }
+  };
+
+  const handleRemind = async (taskId: string) => {
+    if (remindingTaskId) return;
+    setRemindingTaskId(taskId);
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/remind`, { method: "POST" });
+      if (res.ok) {
+        alert("Pengingat berhasil dikirim ke Telegram!");
+      } else {
+        alert("Gagal mengirim pengingat.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setRemindingTaskId(null);
     }
   };
 
@@ -623,7 +642,21 @@ export default function TableView({ tasks, projects = [], selectedProjectId = "a
             <div className={`flex-1 min-w-0 ${level === 0 ? 'font-semibold text-gray-900 text-sm md:text-sm text-base' : 'font-medium text-gray-800 md:text-gray-700 text-sm md:text-xs'}`}>
               <EditableText value={task.title} taskId={task.id} field="title" onSave={handleInlineUpdate} />
             </div>
-            <div className="flex md:items-center gap-0.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0 flex-col md:flex-row absolute md:relative top-2 right-2 md:top-auto md:right-auto">
+            <div className="flex md:items-center gap-0.5 opacity-100 transition-opacity shrink-0 flex-col md:flex-row absolute md:relative top-2 right-2 md:top-auto md:right-auto">
+              {['Ongoing', 'Not Started'].includes(task.status) && (
+                <button 
+                  onClick={() => handleRemind(task.id)} 
+                  className="p-1.5 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all relative" 
+                  title="Kirim Pengingat Telegram"
+                  disabled={remindingTaskId === task.id}
+                >
+                  {remindingTaskId === task.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Bell className="w-3 h-3" />
+                  )}
+                </button>
+              )}
               <button 
                 onClick={() => setActiveCommentTask({id: task.id, title: task.title})} 
                 className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 

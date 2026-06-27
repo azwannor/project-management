@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Loader2, Trash2, Save, XCircle, Clock, CheckCircle2, PauseCircle, AlertCircle, Table2, Check, X, Download } from "lucide-react";
+import { Plus, Loader2, Trash2, Save, XCircle, Clock, CheckCircle2, PauseCircle, AlertCircle, Table2, Check, X, Download, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ModernSelect from "../common/ModernSelect";
 import { Paperclip, MessageSquare, Link as LinkIcon } from "lucide-react";
+import { CustomSelect } from "../ui/CustomSelect";
 import CommentsDrawer from "../common/CommentsDrawer";
 import dynamic from "next/dynamic";
 import "react-quill-new/dist/quill.snow.css";
@@ -19,6 +20,7 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'my-logs' | 'team-logs'>('my-logs');
   const [activeCommentTicket, setActiveCommentTicket] = useState<{id: string, title: string} | null>(null);
+  const [remindingTicketId, setRemindingTicketId] = useState<string | null>(null);
   
   const defaultTaskData = {
     ticketType: "DAILY_ACTIVITY",
@@ -232,7 +234,25 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     }
   };
 
-  const cleanHtmlText = (html: string | null) => {
+  const handleRemind = async (ticket: any) => {
+    if (remindingTicketId) return;
+    setRemindingTicketId(ticket.id);
+    try {
+      const res = await fetch(`/api/support/${ticket.id}/remind`, { method: "POST" });
+      if (res.ok) {
+        alert("Pengingat berhasil dikirim ke Telegram!");
+      } else {
+        alert("Gagal mengirim pengingat.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setRemindingTicketId(null);
+    }
+  };
+
+  const cleanHtmlText = (html: string | null | undefined) => {
     if (!html) return "-";
     return html
       .replace(/<[^>]*>?/gm, '') // Remove HTML tags
@@ -358,8 +378,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     }
   });
   const uniqueUsers = Array.from(allTeamUsersMap.values());
-  const uniqueModules = Array.from(new Set(availableTickets.map(t => t.module).filter(Boolean)));
-  const uniqueCategories = Array.from(new Set(availableTickets.map(t => t.supportType).filter(Boolean)));
+  const uniqueModules = MODULE_GROUPS.flatMap(g => g.options);
+  const uniqueCategories = Array.from(new Set(Object.values(CATEGORY_MAP).flat()));
 
   const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-800 placeholder:text-gray-400 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all";
 
@@ -393,55 +413,56 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-xl border border-gray-200/60 shadow-sm">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1 mr-2">Filters:</span>
+      {/* Filter Bar */}
+      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 bg-white p-3 rounded-xl border border-gray-200/60 shadow-sm">
+        <span className="hidden md:inline text-xs font-bold text-gray-500 uppercase tracking-wider ml-1 mr-2">Filters:</span>
         
-        {activeTab === 'team-logs' && (
-          <select 
-            value={filters.user} 
-            onChange={(e) => setFilters({...filters, user: e.target.value})}
-            className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400"
-          >
-            <option value="all">All Users</option>
-            {uniqueUsers.map((u: any) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        )}
+        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 w-full md:w-auto">
+          {activeTab === 'team-logs' && (
+            <CustomSelect
+              value={filters.user}
+              onChange={(value) => setFilters({...filters, user: value})}
+              options={[
+                { value: 'all', label: 'All Users' },
+                ...uniqueUsers.map((u: any) => ({ value: u.id, label: u.name }))
+              ]}
+              className="w-full md:w-36"
+            />
+          )}
 
-        <select 
-          value={filters.module} 
-          onChange={(e) => setFilters({...filters, module: e.target.value})}
-          className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 max-w-[150px]"
-        >
-          <option value="all">All Modules</option>
-          {uniqueModules.map((m: any) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
+          <CustomSelect
+            value={filters.module}
+            onChange={(value) => setFilters({...filters, module: value})}
+            options={[
+              { value: 'all', label: 'All Modules' },
+              ...uniqueModules.map((m: any) => ({ value: m, label: m }))
+            ]}
+            className="w-full md:w-36"
+          />
 
-        <select 
-          value={filters.category} 
-          onChange={(e) => setFilters({...filters, category: e.target.value})}
-          className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 max-w-[180px]"
-        >
-          <option value="all">All Categories</option>
-          {uniqueCategories.map((c: any) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          <CustomSelect
+            value={filters.category}
+            onChange={(value) => setFilters({...filters, category: value})}
+            options={[
+              { value: 'all', label: 'All Categories' },
+              ...uniqueCategories.map((c: any) => ({ value: c, label: c }))
+            ]}
+            className="w-full md:w-40"
+          />
 
-        <select 
-          value={filters.status} 
-          onChange={(e) => setFilters({...filters, status: e.target.value})}
-          className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400"
-        >
-          <option value="all">All Status</option>
-          <option value="Done">Done</option>
-          <option value="Ongoing">Ongoing</option>
-          <option value="Suspended">Suspended</option>
-          <option value="Not Started">Not Started</option>
-        </select>
+          <CustomSelect
+            value={filters.status}
+            onChange={(value) => setFilters({...filters, status: value})}
+            options={[
+              { value: 'all', label: 'All Status' },
+              { value: 'Done', label: 'Done' },
+              { value: 'Ongoing', label: 'Ongoing' },
+              { value: 'Suspended', label: 'Suspended' },
+              { value: 'Not Started', label: 'Not Started' }
+            ]}
+            className="w-full md:w-32"
+          />
+        </div>
 
         <div className="relative">
           <DatePicker 
@@ -557,7 +578,21 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
                     {renderPriority(ticket.priority)}
                   </div>
 
-                  <div className="flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 min-w-0 absolute md:relative top-2 right-2 md:top-auto md:right-auto">
+                  <div className="flex justify-end gap-1 opacity-100 min-w-0 absolute md:relative top-2 right-2 md:top-auto md:right-auto">
+                    {['Ongoing', 'Not Started'].includes(ticket.status) && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleRemind(ticket); }} 
+                        className="p-1.5 bg-yellow-50 md:bg-yellow-50/50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all relative" 
+                        title="Kirim Pengingat Telegram"
+                        disabled={remindingTicketId === ticket.id}
+                      >
+                        {remindingTicketId === ticket.id ? (
+                          <Loader2 className="w-4 h-4 md:w-3.5 md:h-3.5 animate-spin" />
+                        ) : (
+                          <Bell className="w-4 h-4 md:w-3.5 md:h-3.5" />
+                        )}
+                      </button>
+                    )}
                     <button 
                       onClick={(e) => { e.stopPropagation(); setActiveCommentTicket({id: ticket.id, title: ticket.taskName}); }} 
                       className="p-1.5 bg-indigo-50 md:bg-indigo-50/50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 

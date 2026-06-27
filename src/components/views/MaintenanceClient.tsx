@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Package, ClipboardList, CalendarClock, FileText, Plus, Search, Loader2,
   Trash2, Save, X, Copy, ChevronDown, ChevronUp, GripVertical, CheckCircle2,
-  AlertTriangle, XCircle, Clock, AlertCircle, Eye, Upload, RotateCcw, UploadCloud, FileSpreadsheet
+  AlertTriangle, XCircle, Clock, AlertCircle, Eye, Upload, RotateCcw, UploadCloud, FileSpreadsheet, Bell
 } from "lucide-react";
 import ModernSelect from "../common/ModernSelect";
 import DatePicker from "react-datepicker";
@@ -757,6 +757,7 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
   const [filterDivision, setFilterDivision] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [remindingScheduleId, setRemindingScheduleId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     scheduleType: "RECURRING", assetId: "", templateId: "", frequencyDays: 0, nextDueDate: null as Date | null
   });
@@ -788,6 +789,24 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
       if (!res.ok) { const err = await res.json(); alert(err.error); return; }
       setShowCreate(false); router.refresh();
     } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
+  };
+
+  const handleRemind = async (scheduleId: string) => {
+    if (remindingScheduleId) return;
+    setRemindingScheduleId(scheduleId);
+    try {
+      const res = await fetch(`/api/maintenance-schedules/${scheduleId}/remind`, { method: "POST" });
+      if (res.ok) {
+        alert("Pengingat berhasil dikirim ke Telegram!");
+      } else {
+        alert("Gagal mengirim pengingat.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setRemindingScheduleId(null);
+    }
   };
 
   const statusCounts = useMemo(() => {
@@ -850,9 +869,25 @@ function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, curren
                   {s.assignedExecutors?.map((e: any) => e.name).join(", ") || "No executors assigned"}
                 </p>
               </div>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.scheduleType === "RECURRING" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
-                {s.scheduleType}
-              </span>
+              <div className="flex flex-col gap-1 items-end">
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.scheduleType === "RECURRING" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                  {s.scheduleType}
+                </span>
+                {['UPCOMING', 'DUE', 'OVERDUE'].includes(s.status) && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleRemind(s.id); }} 
+                    className="mt-1 p-1 bg-yellow-50 text-yellow-600 rounded hover:bg-yellow-100 transition-all" 
+                    title="Kirim Pengingat Telegram"
+                    disabled={remindingScheduleId === s.id}
+                  >
+                    {remindingScheduleId === s.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Bell className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
