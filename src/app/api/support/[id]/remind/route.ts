@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { sendTelegramMessage, formatHtmlForTelegram } from "@/lib/telegram";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -26,7 +26,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .join(", ");
 
     const dateStr = format(new Date(ticket.startDate), "dd MMM yyyy HH:mm", { locale: id });
-    const formattedIssue = ticket.issue ? ticket.issue.replace(/<[^>]*>?/gm, '').substring(0, 150) + "..." : "-";
+    const cleanedIssue = formatHtmlForTelegram(ticket.issue);
+    const formattedIssue = cleanedIssue.length > 150 ? cleanedIssue.substring(0, 150) + "..." : cleanedIssue || "-";
 
     const text = `🚨 <b>PENGINGAT (REMINDER) SUPPORT TICKET</b> 🚨\n\n` +
       `Tugas ini membutuhkan perhatian Anda karena status masih <b>${ticket.status}</b>.\n\n` +
