@@ -128,16 +128,8 @@ export default function DashboardClient({
   return (
     <div className="text-slate-800 -m-6 md:-m-10 p-6 md:p-8 font-sans">
       
-      {/* Header & Filter */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 pb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Activity className="w-6 h-6 text-emerald-500" />
-            Command Center
-          </h2>
-          <p className="text-slate-500 text-sm mt-1">Real-time overview of projects and support metrics.</p>
-        </div>
-        
+      {/* Filter */}
+      <div className="flex justify-end mb-6">
         <div className="flex items-center bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
           {["ALL", "MONTH", "WEEK", "TODAY"].map(range => (
             <button

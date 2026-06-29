@@ -49,11 +49,6 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
 
   return (
     <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Settings</h1>
-        <p className="text-slate-500 mt-1">Manage your profile and account preferences</p>
-      </div>
-
       {currentUser.role?.toLowerCase() === "admin" && (
         <div className="flex border-b border-gray-200 mb-6 gap-6">
           <button

@@ -95,43 +95,11 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
 
   return (
     <div className="flex flex-col h-full gap-4 p-4 md:p-6 bg-slate-50 min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <LayoutDashboard className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Projects Management</h1>
-            <p className="text-sm text-slate-500">Manage all your projects and tasks</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {activeTab === "project" && projects.length > 0 && (
-            <select
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-            >
-              <option value="all">All Projects</option>
-              {projects.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          )}
-          {activeTab === "project" && (
-            <button 
-              onClick={() => setIsCreatingProject(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-600/20"
-            >
-              <Plus className="w-4 h-4" /> New Project
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
-        <div className="flex overflow-x-auto border-b border-slate-200 p-2 gap-1">
-          {tabs.map((tab) => {
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 p-2 gap-2">
+          <div className="flex overflow-x-auto gap-1">
+            {tabs.map((tab) => {
+
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -147,6 +115,29 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
               </button>
             );
           })}
+          </div>
+          {activeTab === "project" && (
+            <div className="flex items-center gap-3 px-2 md:px-0">
+              {projects.length > 0 && (
+                <select
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                >
+                  <option value="all">All Projects</option>
+                  {projects.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+              <button 
+                onClick={() => setIsCreatingProject(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm shadow-blue-600/20 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> New Project
+              </button>
+            </div>
+          )}
         </div>
         
         <div className="flex-1 overflow-auto bg-slate-50/50">

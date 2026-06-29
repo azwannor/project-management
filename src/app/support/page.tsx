@@ -42,24 +42,8 @@ export default async function SupportPage() {
   if (!currentUser) redirect("/login");
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
-      {/* Header Panel */}
-      <header className="bg-white border-b border-slate-200 px-4 py-5 md:px-6 md:py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm z-10">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl shadow-sm border border-blue-100">
-            <Headset className="w-8 h-8" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 drop-shadow-sm">Support & Operasional</h1>
-            <p className="text-sm text-gray-500 font-medium mt-1">Manage daily IT support tickets and tasks outside main projects.</p>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-[calc(100vh-100px)] p-4 md:p-6 overflow-hidden">
-        <SupportClient tickets={tickets} currentUser={currentUser} systemUsers={allUsers} />
-      </div>
+    <div className="flex-1 flex flex-col h-full p-4 md:p-6 overflow-hidden bg-slate-50">
+      <SupportClient tickets={tickets} currentUser={currentUser} systemUsers={allUsers} />
     </div>
   );
 }
