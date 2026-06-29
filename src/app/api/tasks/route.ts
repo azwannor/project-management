@@ -52,6 +52,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    if (newTask.parentId) {
+      // Revert parent task if it was completed
+      const parentTask = await prisma.task.findUnique({
+        where: { id: newTask.parentId }
+      });
+      if (parentTask && (parentTask.status === "Completed" || parentTask.status === "Done")) {
+        await prisma.task.update({
+          where: { id: parentTask.id },
+          data: { status: "Ongoing" }
+        });
+      }
+    }
+
     if (body.executor) {
       const executors = body.executor.split(",").map((e: string) => e.trim()).filter(Boolean);
       for (const executorName of executors) {

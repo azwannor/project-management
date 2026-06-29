@@ -30,7 +30,61 @@ export async function PATCH(
     const updatedTask = await prisma.task.update({
       where: { id },
       data: updateData,
+      include: { project: true }
     });
+
+    if (existingTask && existingTask.status !== updatedTask.status) {
+      if (updatedTask.parentId) {
+        // Subtask logic
+        if (updatedTask.status === "Completed" || updatedTask.status === "Done") {
+          const siblingTasks = await prisma.task.findMany({
+            where: { parentId: updatedTask.parentId }
+          });
+          const allCompleted = siblingTasks.every((t: any) => t.status === "Completed" || t.status === "Done");
+          
+          if (allCompleted) {
+            const parentTask = await prisma.task.update({
+              where: { id: updatedTask.parentId },
+              data: { status: "Completed" },
+              include: { project: true }
+            });
+            
+            const { sendTelegramMessage } = await import("@/lib/telegram");
+            const projectName = parentTask.project ? parentTask.project.name : "-";
+            let message = `✅ <b>MAIN TASK SELESAI (AUTO-COMPLETED)</b> ✅\n\n`;
+            message += `<b>Tugas Utama:</b> ${parentTask.title}\n`;
+            message += `<b>Project:</b> ${projectName}\n`;
+            message += `<b>Executor:</b> ${parentTask.executor || "-"}\n`;
+            message += `<i>Semua sub-task telah selesai sehingga tugas utama ini otomatis diselesaikan.</i>\n`;
+            await sendTelegramMessage(message);
+          }
+        } else {
+          // Subtask is not completed, revert parent if it was completed
+          const parentTask = await prisma.task.findUnique({
+            where: { id: updatedTask.parentId }
+          });
+          if (parentTask && (parentTask.status === "Completed" || parentTask.status === "Done")) {
+            await prisma.task.update({
+              where: { id: parentTask.id },
+              data: { status: "Ongoing" }
+            });
+          }
+        }
+      } else {
+        // Main task logic
+        if (updatedTask.status === "Completed" || updatedTask.status === "Done") {
+           const { sendTelegramMessage } = await import("@/lib/telegram");
+           const projectName = updatedTask.project ? updatedTask.project.name : "-";
+           let message = `🎉 <b>MAIN TASK SELESAI</b> 🎉\n\n`;
+           message += `<b>Tugas Utama:</b> ${updatedTask.title}\n`;
+           message += `<b>Project:</b> ${projectName}\n`;
+           message += `<b>Executor:</b> ${updatedTask.executor || "-"}\n`;
+           message += `<i>Tugas utama ini telah berhasil diselesaikan!</i>\n`;
+           
+           await sendTelegramMessage(message);
+        }
+      }
+    }
 
     if (body.executor !== undefined && existingTask && existingTask.executor !== body.executor) {
       if (body.executor) {

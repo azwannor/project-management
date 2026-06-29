@@ -46,7 +46,7 @@ export default function ActiveUsers() {
         {activeUsers.map((user, idx) => (
           <div 
             key={user.id}
-            className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-tr from-indigo-100 to-blue-50 flex items-center justify-center text-xs font-bold text-blue-700 shadow-sm relative group cursor-pointer"
+            className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-tr from-indigo-100 to-blue-50 flex items-center justify-center text-xs font-bold text-blue-700 shadow-sm relative group cursor-pointer hover:z-50"
             style={{ zIndex: activeUsers.length - idx }}
           >
             {user.photo ? (

@@ -487,9 +487,9 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
 
       <div className="overflow-hidden flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200/60">
         <div className="overflow-x-auto flex-1 flex flex-col bg-gray-50 md:bg-transparent">
-          <div className="md:min-w-[1200px] flex-1 flex flex-col p-2 md:p-0">
+          <div className="md:min-w-[1400px] flex-1 flex flex-col p-2 md:p-0">
             {/* Table Header */}
-          <div className="hidden md:grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10 md:grid-cols-[1.2fr_1.2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_2.5fr_2.5fr_0.8fr_0.8fr_0.5fr]">
+          <div className="hidden md:grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10 md:grid-cols-[1fr_1fr_1.2fr_1.2fr_1.5fr_1fr_1fr_2fr_2fr_1fr_1fr_1.2fr]">
             <div>Start Time</div>
             <div>End Time</div>
             <div>Requester</div>
@@ -518,7 +518,7 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
             
             {displayedTickets.length > 0 ? (
               displayedTickets.map((ticket, i) => (
-                <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`flex flex-col md:grid gap-3 p-4 md:px-4 md:py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b cursor-pointer ${i % 2 === 0 ? 'bg-white shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80' : 'bg-gray-50 md:bg-gray-50/20 shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80'} md:items-center md:grid-cols-[1.2fr_1.2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_2.5fr_2.5fr_0.8fr_0.8fr_0.5fr] group relative`}>
+                <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`flex flex-col md:grid gap-3 p-4 md:px-4 md:py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b cursor-pointer ${i % 2 === 0 ? 'bg-white shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80' : 'bg-gray-50 md:bg-gray-50/20 shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80'} md:items-center md:grid-cols-[1fr_1fr_1.2fr_1.2fr_1.5fr_1fr_1fr_2fr_2fr_1fr_1fr_1.2fr] group relative`}>
                   
                   <div className="text-xs text-gray-700 tabular-nums min-w-0 flex items-center justify-between md:justify-start">
                     <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Start Time</span>
