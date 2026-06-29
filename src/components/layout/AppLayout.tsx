@@ -36,7 +36,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <ActiveUsers />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto relative">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto relative flex flex-col">
           {children}
         </main>
       </div>

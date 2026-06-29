@@ -94,7 +94,7 @@ export default function ProjectDashboardClient({ initialData }: { initialData: a
       ];
 
   return (
-    <div className="flex flex-col h-full gap-4 p-4 md:p-6 bg-slate-50 min-h-screen">
+    <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 bg-slate-50 min-h-0">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 p-2 gap-2">
           <div className="flex overflow-x-auto gap-1">
