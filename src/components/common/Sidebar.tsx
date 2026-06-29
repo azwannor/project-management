@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Headset, Settings, LogOut, Menu, X, Activity, Wrench } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
 
-export default function SidebarContent({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
+function SidebarContent({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
