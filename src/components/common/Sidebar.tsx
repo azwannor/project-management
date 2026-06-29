@@ -5,15 +5,14 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Headset, Settings, LogOut, Menu, X, Activity, Wrench } from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
 
-function SidebarContent() {
+export default function SidebarContent({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
 
   // Close sidebar on route change on mobile
   useEffect(() => {
-    setIsOpen(false);
-  }, [pathname, searchParams]);
+    if (setIsOpen) setIsOpen(false);
+  }, [pathname, searchParams, setIsOpen]);
 
   const menuItems = [
     {
@@ -40,27 +39,11 @@ function SidebarContent() {
 
   return (
     <>
-      {/* Mobile Header & Toggle */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-white/40 backdrop-blur-xl border-b border-white/20 z-40 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md text-xs">
-            IT
-          </div>
-          <h2 className="font-bold text-gray-800 text-lg tracking-tight">IT Tracker</h2>
-        </div>
-        <button 
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 bg-white/60 rounded-lg text-gray-600 hover:bg-white/80 transition-colors shadow-sm border border-gray-200/40"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      </div>
-
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
           className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity" 
-          onClick={() => setIsOpen(false)} 
+          onClick={() => setIsOpen && setIsOpen(false)} 
         />
       )}
 
@@ -75,7 +58,7 @@ function SidebarContent() {
           </div>
           <button 
             className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white/40 rounded-lg transition-colors"
-            onClick={() => setIsOpen(false)}
+            onClick={() => setIsOpen && setIsOpen(false)}
           >
             <X className="w-5 h-5" />
           </button>
@@ -207,10 +190,10 @@ function UserMenu() {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
   return (
     <Suspense fallback={<div className="w-64 h-screen bg-white/20" />}>
-      <SidebarContent />
+      <SidebarContent isOpen={isOpen} setIsOpen={setIsOpen} />
     </Suspense>
   );
 }

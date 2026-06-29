@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
+import { Menu } from "lucide-react";
 import Sidebar from "@/components/common/Sidebar";
 import ActiveUsers from "@/components/common/ActiveUsers";
 import NotificationBell from "@/components/common/NotificationBell";
@@ -8,6 +10,7 @@ import NotificationBell from "@/components/common/NotificationBell";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   if (isLoginPage) {
     return <main className="flex-1">{children}</main>;
@@ -24,15 +27,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Sidebar />
+      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-50 relative shadow-sm">
-          <div className="font-bold text-slate-800 text-lg">
-            {getPageTitle(pathname)}
+        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 md:px-6 shrink-0 z-50 relative shadow-sm gap-2">
+          <div className="flex items-center gap-2 overflow-hidden min-w-0">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-1.5 -ml-1 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="font-bold text-slate-800 text-base md:text-lg truncate">
+              {getPageTitle(pathname)}
+            </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
             <NotificationBell />
-            <div className="h-6 w-px bg-slate-200"></div>
+            <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
             <ActiveUsers />
           </div>
         </header>
