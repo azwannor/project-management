@@ -1,3 +1,4 @@
+import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/auth";
@@ -45,7 +46,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // Staff hanya bisa lihat schedule mereka sendiri
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       const isAssigned = schedule.assignedExecutors.some(e => e.id === session.userId);
       if (!isAssigned) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -70,7 +71,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       return NextResponse.json({ error: "Forbidden. Only admins can update schedules." }, { status: 403 });
     }
 
@@ -121,7 +122,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       return NextResponse.json({ error: "Forbidden. Only admins can delete schedules." }, { status: 403 });
     }
 

@@ -1,3 +1,4 @@
+import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/auth";
@@ -14,7 +15,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       return NextResponse.json({ error: "Forbidden. Only admins can update templates." }, { status: 403 });
     }
 
@@ -130,7 +131,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       return NextResponse.json({ error: "Forbidden. Only admins can delete templates." }, { status: 403 });
     }
 

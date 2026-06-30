@@ -1,3 +1,4 @@
+import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/auth";
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
     }
 
     // Staff hanya bisa lihat schedule yang di-assign ke mereka
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       where.assignedExecutors = {
         some: { id: session.userId },
       };
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
     const { scheduleType, assetId, templateId, frequencyDays, nextDueDate, executorIds } = body;
 
     // Staff hanya boleh buat ADHOC
-    if (session.role !== "Admin" && scheduleType !== "ADHOC") {
+    if (!isMaintenanceAdmin(session) && scheduleType !== "ADHOC") {
       return NextResponse.json({ error: "Staff hanya bisa membuat jadwal ad-hoc." }, { status: 403 });
     }
 

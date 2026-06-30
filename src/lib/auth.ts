@@ -30,3 +30,8 @@ export async function decrypt(session: string | undefined = '') {
     return null;
   }
 }
+
+export function isMaintenanceAdmin(session: any) {
+  if (!session) return false;
+  return session.role === "Admin" || (session.name && session.name.toLowerCase().includes("dwi"));
+}

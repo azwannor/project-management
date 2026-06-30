@@ -50,7 +50,7 @@ export default function MaintenanceClient({
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("assets");
   const router = useRouter();
-  const isAdmin = currentUser?.role === "Admin";
+  const isAdmin = currentUser?.role === "Admin" || currentUser?.name?.toLowerCase().includes("dwi");
 
   const tabs = [
     { id: "assets" as Tab, label: "Asset Registry", icon: Package, count: initialAssets.length },

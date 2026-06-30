@@ -1,3 +1,4 @@
+import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/auth";
@@ -10,7 +11,7 @@ export async function POST(req: Request) {
     const sessionCookie = cookieStore.get("session")?.value;
     const session = await decrypt(sessionCookie);
 
-    if (!session || !session.userId || session.role !== "Admin") {
+    if (!session || !session.userId || !isMaintenanceAdmin(session)) {
       return NextResponse.json({ error: "Unauthorized. Admin only." }, { status: 403 });
     }
 

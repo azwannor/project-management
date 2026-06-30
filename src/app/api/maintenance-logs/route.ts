@@ -1,3 +1,4 @@
+import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/auth";
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
 
     // Cek apakah user adalah salah satu assigned executor
     const isAssigned = schedule.assignedExecutors.some(e => e.id === session.userId);
-    if (!isAssigned && session.role !== "Admin") {
+    if (!isAssigned && !isMaintenanceAdmin(session)) {
       return NextResponse.json(
         { error: "You are not assigned as an executor for this maintenance schedule." },
         { status: 403 }
@@ -206,7 +207,7 @@ export async function GET(req: Request) {
     }
 
     // Staff hanya bisa lihat log dari schedule mereka
-    if (session.role !== "Admin") {
+    if (!isMaintenanceAdmin(session)) {
       where.schedule = {
         ...where.schedule,
         assignedExecutors: { some: { id: session.userId } },
