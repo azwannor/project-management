@@ -17,6 +17,7 @@ model User {
   jobDesk   String
   role      String   // "Admin" | "Staff"
   telegramUsername String? // Untuk integrasi webhook telegram
+  telegramChatId   String? // Untuk pengiriman DM Telegram
   handledAreas String[] // Untuk auto-assign Master Data
   tasks     Task[]
   timeLogs  TimeLog[]

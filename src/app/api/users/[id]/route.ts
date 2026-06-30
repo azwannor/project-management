@@ -9,7 +9,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, email, password, jobDesk, role, telegramUsername, handledAreas } = body;
+    const { name, email, password, jobDesk, role, telegramUsername, telegramChatId, handledAreas } = body;
 
     const dataToUpdate: any = {};
     if (name) dataToUpdate.name = name;
@@ -17,6 +17,7 @@ export async function PUT(
     if (jobDesk) dataToUpdate.jobDesk = jobDesk;
     if (role) dataToUpdate.role = role;
     if (telegramUsername !== undefined) dataToUpdate.telegramUsername = telegramUsername;
+    if (telegramChatId !== undefined) dataToUpdate.telegramChatId = telegramChatId;
     if (handledAreas !== undefined) dataToUpdate.handledAreas = handledAreas;
 
     if (password) {

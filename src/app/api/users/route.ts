@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const users = await prisma.user.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, createdAt: true }
+      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, createdAt: true, telegramUsername: true, telegramChatId: true, handledAreas: true }
     });
     return NextResponse.json(users);
   } catch (error: any) {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized. Only admins can create users.' }, { status: 403 });
     }
 
-    const { name, email, password, jobDesk, role, telegramUsername, handledAreas } = await request.json();
+    const { name, email, password, jobDesk, role, telegramUsername, telegramChatId, handledAreas } = await request.json();
 
     if (!name || !email || !password || !jobDesk || !role) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
@@ -48,9 +48,10 @@ export async function POST(request: Request) {
         jobDesk,
         role,
         telegramUsername,
+        telegramChatId,
         handledAreas: handledAreas || []
       },
-      select: { id: true, name: true, email: true, jobDesk: true, role: true, telegramUsername: true, handledAreas: true }
+      select: { id: true, name: true, email: true, jobDesk: true, role: true, telegramUsername: true, telegramChatId: true, handledAreas: true }
     });
 
     return NextResponse.json({ success: true, user: newUser });

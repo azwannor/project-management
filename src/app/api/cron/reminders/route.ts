@@ -34,6 +34,7 @@ export async function GET(req: Request) {
     let messageText = `🚨 <b>REKAP TUGAS & TIKET OVERDUE</b> 🚨\n\nHalo tim, berikut adalah daftar tugas dan tiket yang melewati batas waktu penyelesaian dan belum selesai:\n\n`;
     
     let hasContent = false;
+    const userDMs = new Map<string, string[]>();
 
     if (overdueSupport.length > 0) {
       messageText += `🔧 <b>SUPPORT TICKETS (> 2 Jam):</b>\n`;
@@ -42,6 +43,13 @@ export async function GET(req: Request) {
           .map(e => e.telegramUsername ? `@${e.telegramUsername.replace('@', '')}` : e.name)
           .join(", ");
         messageText += `${idx + 1}. ${ticket.taskName} - ${mentions || "Belum ada pelaksana"}\n`;
+
+        ticket.executors.forEach(e => {
+          if (e.telegramChatId) {
+            if (!userDMs.has(e.telegramChatId)) userDMs.set(e.telegramChatId, []);
+            userDMs.get(e.telegramChatId)!.push(`🔧 Support Ticket: <b>${ticket.taskName}</b> (Overdue > 2 Jam)`);
+          }
+        });
       });
       messageText += `\n`;
       hasContent = true;
@@ -50,8 +58,6 @@ export async function GET(req: Request) {
     if (overdueTasks.length > 0) {
       messageText += `📋 <b>PROJECT TASKS (Melewati End Date):</b>\n`;
       
-      // Need to resolve task executors to telegram usernames
-      // We will do it in bulk
       const allExecutorNames = new Set<string>();
       overdueTasks.forEach(t => {
         if (t.executor) {
@@ -64,13 +70,28 @@ export async function GET(req: Request) {
       });
       
       const userMap = new Map();
-      users.forEach(u => userMap.set(u.name, u.telegramUsername ? `@${u.telegramUsername.replace('@', '')}` : u.name));
+      const userChatIdMap = new Map();
+      
+      users.forEach(u => {
+        userMap.set(u.name, u.telegramUsername ? `@${u.telegramUsername.replace('@', '')}` : u.name);
+        if (u.telegramChatId) {
+          userChatIdMap.set(u.name, u.telegramChatId);
+        }
+      });
 
       overdueTasks.forEach((task, idx) => {
         const executorNames = task.executor ? task.executor.split(",").map(n => n.trim()).filter(Boolean) : [];
         const mentions = executorNames.map(n => userMap.get(n) || n).join(", ");
         
         messageText += `${idx + 1}. ${task.title} - ${mentions || "Belum ada pelaksana"}\n`;
+
+        executorNames.forEach(n => {
+          const chatId = userChatIdMap.get(n);
+          if (chatId) {
+            if (!userDMs.has(chatId)) userDMs.set(chatId, []);
+            userDMs.get(chatId)!.push(`📋 Project Task: <b>${task.title}</b> (Overdue, Project: ${task.project?.name || '-'})`);
+          }
+        });
       });
       hasContent = true;
     }
@@ -78,10 +99,20 @@ export async function GET(req: Request) {
     messageText += `\nMohon segera ditindaklanjuti. Terima kasih! 🙏`;
 
     if (hasContent) {
+      // Send group broadcast
       await sendTelegramMessage(messageText);
+
+      // Send individual DMs
+      for (const [chatId, messages] of userDMs.entries()) {
+        const dmText = `🚨 <b>PEMBERITAHUAN TUGAS OVERDUE</b> 🚨\n\nHalo, Anda memiliki tugas/tiket yang telah melewati batas waktu dan belum selesai:\n\n` 
+          + messages.map((m, i) => `${i + 1}. ${m}`).join("\n") 
+          + `\n\nMohon segera ditindaklanjuti. Terima kasih! 🙏`;
+        
+        await sendTelegramMessage(dmText, undefined, chatId);
+      }
     }
 
-    return NextResponse.json({ success: true, counts: { support: overdueSupport.length, tasks: overdueTasks.length } });
+    return NextResponse.json({ success: true, counts: { support: overdueSupport.length, tasks: overdueTasks.length, dmsSent: userDMs.size } });
   } catch (error: any) {
     console.error("Cron failed:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

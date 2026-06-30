@@ -162,7 +162,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
 function UserManagement({ users, inputClass }: { users: any[], inputClass: string }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] as string[] });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] as string[] });
   const [loading, setLoading] = useState(false);
   const error = "";
   const [errorState, setError] = useState("");
@@ -192,7 +192,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
       if (!res.ok) throw new Error(data.error);
       setIsAdding(false);
       setEditingUser(null);
-      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] });
+      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] });
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -219,7 +219,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-slate-800">User List</h2>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", handledAreas: [] }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Add User
         </button>
       </div>
@@ -260,6 +260,10 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                   </div>
                   <input type="text" value={formData.telegramUsername} onChange={e => setFormData({...formData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Telegram Chat ID</label>
+                <input type="text" value={formData.telegramChatId} onChange={e => setFormData({...formData, telegramChatId: e.target.value})} className={inputClass} placeholder="e.g. 123456789" />
               </div>
             </div>
             
@@ -323,7 +327,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", handledAreas: u.handledAreas || [] }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", telegramChatId: u.telegramChatId || "", handledAreas: u.handledAreas || [] }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleDeleteUser(u.id, u.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
