@@ -89,6 +89,27 @@ export async function POST(req: Request) {
       }
     }
     
+    // Check if it's a regular message (e.g., /start)
+    if (body.message && body.message.text) {
+      const text = body.message.text;
+      const chatId = body.message.chat.id;
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+
+      if (text.startsWith("/start") && token) {
+        const replyText = `Halo! 👋\nSelamat datang di Bot IT Tracker.\n\nTelegram Chat ID Anda adalah: <b>${chatId}</b>\n\nSilakan serahkan angka di atas kepada Admin untuk dimasukkan ke sistem agar Anda bisa menerima notifikasi tugas secara otomatis melalui DM.`;
+        
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: replyText,
+            parse_mode: "HTML",
+          }),
+        });
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Webhook error:", error);
