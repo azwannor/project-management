@@ -14,7 +14,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, email, oldPassword, newPassword, photo, telegramUsername } = await request.json();
+    const { name, email, oldPassword, newPassword, photo, telegramUsername, telegramChatId } = await request.json();
 
     const currentUser = await prisma.user.findUnique({
       where: { id: session.userId }
@@ -32,6 +32,10 @@ export async function PUT(request: Request) {
 
     if (telegramUsername !== undefined) {
       updates.telegramUsername = telegramUsername;
+    }
+
+    if (telegramChatId !== undefined) {
+      updates.telegramChatId = telegramChatId;
     }
 
     if (oldPassword && newPassword) {

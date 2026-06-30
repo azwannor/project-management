@@ -11,6 +11,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
     email: currentUser.email || "",
     photo: currentUser.photo || "",
     telegramUsername: currentUser.telegramUsername || "",
+    telegramChatId: currentUser.telegramChatId || "",
     oldPassword: "",
     newPassword: "",
   });
@@ -112,7 +113,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
                       <input type="email" value={profileData.email} onChange={e => setProfileData({...profileData, email: e.target.value})} className={inputClass} required />
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-1">
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">Telegram Username <span className="text-xs font-normal normal-case text-gray-400 ml-1">(Tanpa @)</span></label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -120,8 +121,14 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
                         </div>
                         <input type="text" value={profileData.telegramUsername} onChange={e => setProfileData({...profileData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username_telegram_anda" />
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                        Diperlukan agar sistem bisa mengenali Anda saat Anda menekan tombol "Tandai Selesai" langsung dari notifikasi grup Telegram.
+                    </div>
+                    <div className="md:col-span-1">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">Telegram Chat ID</label>
+                      <input type="text" value={profileData.telegramChatId} onChange={e => setProfileData({...profileData, telegramChatId: e.target.value})} className={inputClass} placeholder="e.g. 123456789" />
+                    </div>
+                    <div className="md:col-span-2 mt-0">
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                        Diperlukan agar sistem bisa mengenali Anda saat Anda menekan tombol "Tandai Selesai" (Username) dan untuk mengirimkan notifikasi via DM (Chat ID).
                       </p>
                     </div>
                   </div>
