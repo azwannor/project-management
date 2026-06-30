@@ -39,6 +39,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     await sendTelegramMessage(text);
 
+    // Send direct messages to executors if they have a chat ID
+    for (const u of ticket.executors) {
+      if (u.telegramChatId) {
+        try {
+          const dmText = `Halo ${u.name},\n\nAnda mendapatkan panggilan manual (PENGINGAT) dari Admin untuk Tiket berikut:\n\n${text}`;
+          await sendTelegramMessage(dmText, undefined, u.telegramChatId);
+        } catch (err) {
+          console.error(`Gagal mengirim DM manual ke chat ID ${u.telegramChatId}`, err);
+        }
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Failed to send reminder:", error);
