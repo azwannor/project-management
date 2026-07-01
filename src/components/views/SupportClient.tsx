@@ -118,7 +118,7 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
           attachment: editTaskData.attachment,
           ticketType: editTaskData.ticketType,
           requesterName: editTaskData.requesterName,
-          executorIds: editTaskData.executors?.map((e: any) => e.id) || [],
+          executorIds: editTaskData.executorIds || [],
           link: editTaskData.link,
           area: editTaskData.supportType === "Master Data" ? editTaskData.area : null
         })
