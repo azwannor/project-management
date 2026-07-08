@@ -15,7 +15,7 @@ export default async function SettingsPage() {
 
   const currentUser = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, telegramChatId: true },
+    select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, telegramChatId: true, canViewTeamLogs: true },
   });
 
   if (!currentUser) {
@@ -27,7 +27,7 @@ export default async function SettingsPage() {
   if (currentUser.role?.toLowerCase() === "admin") {
     allUsers = await prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, telegramChatId: true, createdAt: true, handledAreas: true },
+      select: { id: true, name: true, email: true, jobDesk: true, role: true, photo: true, telegramUsername: true, telegramChatId: true, createdAt: true, handledAreas: true, canViewTeamLogs: true },
     });
   }
 

@@ -19,6 +19,7 @@ model User {
   telegramUsername String? // Untuk integrasi webhook telegram
   telegramChatId   String? // Untuk pengiriman DM Telegram
   handledAreas String[] // Untuk auto-assign Master Data
+  canViewTeamLogs Boolean @default(false) // Untuk akses Team Logs bagi non-Admin
   tasks     Task[]
   timeLogs  TimeLog[]
   supportTickets SupportTicket[] @relation("SupportCreator")

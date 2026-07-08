@@ -394,7 +394,7 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
           >
             My Logs
           </button>
-          {currentUser?.role === 'Admin' && (
+          {(currentUser?.role === 'Admin' || currentUser?.canViewTeamLogs) && (
             <button
               onClick={() => setActiveTab('team-logs')}
               className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'team-logs' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}

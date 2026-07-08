@@ -9,7 +9,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, email, password, jobDesk, role, telegramUsername, telegramChatId, handledAreas } = body;
+    const { name, email, password, jobDesk, role, telegramUsername, telegramChatId, handledAreas, canViewTeamLogs } = body;
 
     const dataToUpdate: any = {};
     if (name) dataToUpdate.name = name;
@@ -19,6 +19,7 @@ export async function PUT(
     if (telegramUsername !== undefined) dataToUpdate.telegramUsername = telegramUsername;
     if (telegramChatId !== undefined) dataToUpdate.telegramChatId = telegramChatId;
     if (handledAreas !== undefined) dataToUpdate.handledAreas = handledAreas;
+    if (canViewTeamLogs !== undefined) dataToUpdate.canViewTeamLogs = canViewTeamLogs;
 
     if (password) {
       dataToUpdate.password = await bcrypt.hash(password, 10);

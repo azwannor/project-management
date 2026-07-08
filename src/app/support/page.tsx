@@ -17,7 +17,7 @@ export default async function SupportPage() {
   const [currentUser, tickets, allUsers] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.userId as string },
-      select: { id: true, name: true, jobDesk: true, role: true }
+      select: { id: true, name: true, jobDesk: true, role: true, canViewTeamLogs: true }
     }),
     prisma.supportTicket.findMany({
       include: { 

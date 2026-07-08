@@ -169,7 +169,7 @@ export default function SettingsClient({ currentUser, allUsers }: { currentUser:
 function UserManagement({ users, inputClass }: { users: any[], inputClass: string }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] as string[] });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] as string[], canViewTeamLogs: false });
   const [loading, setLoading] = useState(false);
   const error = "";
   const [errorState, setError] = useState("");
@@ -199,7 +199,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
       if (!res.ok) throw new Error(data.error);
       setIsAdding(false);
       setEditingUser(null);
-      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] });
+      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [], canViewTeamLogs: false });
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -226,7 +226,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-slate-800">User List</h2>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [], canViewTeamLogs: false }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" /> Add User
         </button>
       </div>
@@ -274,25 +274,46 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
               </div>
             </div>
             
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Handled Areas (For Auto-Assign Master Data)</label>
-              <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-white max-h-48 overflow-y-auto">
-                {AVAILABLE_AREAS.map(area => (
-                  <label key={area} className="flex items-center gap-1.5 text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-100 cursor-pointer hover:bg-gray-100">
-                    <input 
-                      type="checkbox" 
-                      checked={formData.handledAreas.includes(area)}
-                      onChange={(e) => {
-                        const newAreas = e.target.checked 
-                          ? [...formData.handledAreas, area]
-                          : formData.handledAreas.filter(a => a !== area);
-                        setFormData({...formData, handledAreas: newAreas});
-                      }}
-                      className="w-3 h-3 text-blue-600 rounded border-gray-300"
-                    />
-                    {area}
-                  </label>
-                ))}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Handled Areas (For Auto-Assign Master Data)</label>
+                <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-white max-h-48 overflow-y-auto">
+                  {AVAILABLE_AREAS.map(area => (
+                    <label key={area} className="flex items-center gap-1.5 text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-100 cursor-pointer hover:bg-gray-100">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.handledAreas.includes(area)}
+                        onChange={(e) => {
+                          const newAreas = e.target.checked 
+                            ? [...formData.handledAreas, area]
+                            : formData.handledAreas.filter(a => a !== area);
+                          setFormData({...formData, handledAreas: newAreas});
+                        }}
+                        className="w-3 h-3 text-blue-600 rounded border-gray-300"
+                      />
+                      {area}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Role Access</label>
+                <div className="p-3 border border-gray-200 rounded-lg bg-white flex items-start gap-2">
+                  <input 
+                    type="checkbox"
+                    id="canViewTeamLogs"
+                    checked={formData.canViewTeamLogs}
+                    onChange={e => setFormData({...formData, canViewTeamLogs: e.target.checked})}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 mt-0.5"
+                  />
+                  <div>
+                    <label htmlFor="canViewTeamLogs" className="text-sm font-semibold text-gray-800 cursor-pointer">Can View Team Logs</label>
+                    <p className="text-xs text-gray-500 mt-0.5">Berikan akses ke pengguna ini untuk melihat tiket support seluruh tim (Team Logs) meskipun bukan Admin.</p>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -334,7 +355,7 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", telegramChatId: u.telegramChatId || "", handledAreas: u.handledAreas || [] }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", telegramChatId: u.telegramChatId || "", handledAreas: u.handledAreas || [], canViewTeamLogs: u.canViewTeamLogs || false }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleDeleteUser(u.id, u.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
