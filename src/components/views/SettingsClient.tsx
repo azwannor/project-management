@@ -273,9 +273,6 @@ function UserManagement({ users, inputClass }: { users: any[], inputClass: strin
                 <input type="text" value={formData.telegramChatId} onChange={e => setFormData({...formData, telegramChatId: e.target.value})} className={inputClass} placeholder="e.g. 123456789" />
               </div>
             </div>
-            
-            </div>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Handled Areas (For Auto-Assign Master Data)</label>
