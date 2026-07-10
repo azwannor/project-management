@@ -26,9 +26,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const { executorIds, link, ...restData } = data;
     
-    // Jika status berubah jadi Done, otomatis set endDate
-    if (restData.status === "Done" && existingTicket?.status !== "Done") {
-      restData.endDate = new Date().toISOString();
+    // Handle endDate for REQUEST tickets automatically
+    if (existingTicket?.ticketType === "REQUEST") {
+      if (restData.status === "Done") {
+        if (existingTicket.status !== "Done") {
+          restData.endDate = new Date().toISOString();
+        } else {
+          delete restData.endDate; // Biarkan endDate sebelumnya jika sudah Done
+        }
+      } else {
+        restData.endDate = null; // Kosongkan endDate jika status bukan Done
+      }
+    } else {
+      // Untuk DAILY_ACTIVITY, update sesuai dari frontend, tapi bisa null
+      if (restData.endDate === null) {
+        // Biarkan null
+      }
     }
 
     const updateData: any = {

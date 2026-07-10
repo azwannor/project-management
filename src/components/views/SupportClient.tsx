@@ -109,8 +109,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
           taskName: editTaskData.taskName,
           supportType: editTaskData.supportType,
           module: finalModule,
-          startDate: editTaskData.startDate.toISOString(),
-          endDate: editTaskData.endDate.toISOString(),
+          startDate: editTaskData.startDate ? editTaskData.startDate.toISOString() : new Date().toISOString(),
+          endDate: editTaskData.endDate ? editTaskData.endDate.toISOString() : null,
           issue: editTaskData.issue,
           solution: editTaskData.solution,
           status: editTaskData.status,
@@ -149,8 +149,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     const isCustomModule = !(ticket.module in CATEGORY_MAP) && ticket.module !== "General IT / Lainnya...";
     setEditTaskData({
       ...ticket,
-      startDate: new Date(ticket.startDate),
-      endDate: new Date(ticket.endDate),
+      startDate: ticket.startDate ? new Date(ticket.startDate) : new Date(),
+      endDate: ticket.endDate ? new Date(ticket.endDate) : null,
       module: isCustomModule ? "General IT / Lainnya..." : ticket.module,
       customModule: isCustomModule ? ticket.module : "",
       priority: ticket.priority || "Normal",
@@ -288,8 +288,8 @@ export default function SupportClient({ tickets = [], currentUser, systemUsers =
     // Generate CSV string from displayedTickets
     const headers = ["Start Time", "End Time", "Requester", "Executor", "Task Name", "Category", "Module", "Issue", "Solution", "Status"];
     const rows = displayedTickets.map(t => [
-      new Date(t.startDate).toLocaleString(),
-      new Date(t.endDate).toLocaleString(),
+      t.startDate ? new Date(t.startDate).toLocaleString() : "-",
+      t.endDate ? new Date(t.endDate).toLocaleString() : "-",
       `"${(t.requesterName || t.user?.name || "Unknown").replace(/"/g, '""')}"`,
       `"${(t.ticketType === "REQUEST" ? (t.executors?.map((e:any)=>e.name).join(", ") || "Belum ditentukan") : (t.user?.name || "Unknown")).replace(/"/g, '""')}"`,
       `"${(t.taskName || "").replace(/"/g, '""')}"`,
