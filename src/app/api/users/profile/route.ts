@@ -1,85 +1,145 @@
-import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
-import { cookies } from 'next/headers';
-import { decrypt, encrypt } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { encrypt } from "@/lib/auth";
+import { requireActiveSession } from "@/lib/api-auth";
 
 export async function PUT(request: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session')?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { name, email, oldPassword, newPassword, photo, telegramUsername, telegramChatId } = await request.json();
-
+    const body = await request.json();
     const currentUser = await prisma.user.findUnique({
-      where: { id: session.userId }
+      where: { id: auth.user.id },
     });
 
     if (!currentUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const updates: any = { name, email };
-    
-    if (photo !== undefined) {
-      updates.photo = photo;
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : currentUser.name;
+    const emailRaw = typeof body.email === "string" && body.email.trim() ? body.email.trim().toLowerCase() : currentUser.email;
+    if (!emailRaw.includes("@")) {
+      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
     }
 
-    if (telegramUsername !== undefined) {
-      updates.telegramUsername = telegramUsername;
+    const updates: Prisma.UserUpdateInput = {
+      name,
+      email: emailRaw,
+    };
+
+    if (body.photo !== undefined) {
+      updates.photo = typeof body.photo === "string" ? body.photo.trim() || null : null;
     }
 
-    if (telegramChatId !== undefined) {
-      updates.telegramChatId = telegramChatId;
+    if (body.telegramUsername !== undefined) {
+      updates.telegramUsername =
+        typeof body.telegramUsername === "string"
+          ? body.telegramUsername.replace(/^@+/, "").trim() || null
+          : null;
     }
 
-    if (oldPassword && newPassword) {
-      const isPasswordValid = await bcrypt.compare(oldPassword, currentUser.password);
-      if (!isPasswordValid) {
-        return NextResponse.json({ error: 'Invalid old password' }, { status: 400 });
+    if (body.telegramChatId !== undefined) {
+      updates.telegramChatId =
+        typeof body.telegramChatId === "string" ? body.telegramChatId.trim() || null : null;
+    }
+
+    if (body.preferredLocale === "en" || body.preferredLocale === "id") {
+      updates.preferredLocale = body.preferredLocale;
+    }
+    if (body.preferredTheme === "light" || body.preferredTheme === "dark") {
+      updates.preferredTheme = body.preferredTheme;
+    }
+
+    if (body.newPassword) {
+      if (typeof body.newPassword !== "string" || body.newPassword.length < 6) {
+        return NextResponse.json({ error: "New password must be at least 6 characters" }, { status: 400 });
       }
-      updates.password = await bcrypt.hash(newPassword, 10);
+      if (!body.oldPassword || typeof body.oldPassword !== "string") {
+        return NextResponse.json({ error: "Old password is required to change password" }, { status: 400 });
+      }
+      const isPasswordValid = await bcrypt.compare(body.oldPassword, currentUser.password);
+      if (!isPasswordValid) {
+        return NextResponse.json({ error: "Invalid old password" }, { status: 400 });
+      }
+      updates.password = await bcrypt.hash(body.newPassword, 10);
     }
 
-    // Check if email is being changed and if it already exists
-    if (email !== currentUser.email) {
-      const existingEmail = await prisma.user.findUnique({ where: { email } });
-      if (existingEmail) {
-        return NextResponse.json({ error: 'Email is already in use' }, { status: 400 });
+    if (emailRaw !== currentUser.email.toLowerCase()) {
+      const existingEmail = await prisma.user.findUnique({ where: { email: emailRaw } });
+      if (existingEmail && existingEmail.id !== currentUser.id) {
+        return NextResponse.json({ error: "Email is already in use" }, { status: 400 });
       }
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: session.userId },
-      data: updates
+      where: { id: currentUser.id },
+      data: updates,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        jobDesk: true,
+        role: true,
+        photo: true,
+        telegramUsername: true,
+        telegramChatId: true,
+        handledAreas: true,
+        canViewTeamLogs: true,
+        canManageMaintenance: true,
+        preferredLocale: true,
+        preferredTheme: true,
+      },
     });
 
-    // Perbarui session cookie jika nama, email, atau photo berubah
     const newToken = await encrypt({
       userId: updatedUser.id,
       email: updatedUser.email,
       name: updatedUser.name,
       role: updatedUser.role,
       photo: updatedUser.photo,
+      canManageMaintenance: updatedUser.canManageMaintenance,
+      canViewTeamLogs: updatedUser.canViewTeamLogs,
+      preferredLocale: updatedUser.preferredLocale,
+      preferredTheme: updatedUser.preferredTheme,
     });
 
     const response = NextResponse.json({ success: true, user: updatedUser });
-    response.cookies.set('session', newToken, {
+    response.cookies.set("session", newToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60,
+      path: "/",
     });
+
+    if (updatedUser.preferredLocale === "en" || updatedUser.preferredLocale === "id") {
+      response.cookies.set("locale", updatedUser.preferredLocale, {
+        httpOnly: false,
+        sameSite: "lax",
+        maxAge: 365 * 24 * 60 * 60,
+        path: "/",
+      });
+    }
+    if (updatedUser.preferredTheme === "light" || updatedUser.preferredTheme === "dark") {
+      response.cookies.set("theme", updatedUser.preferredTheme, {
+        httpOnly: false,
+        sameSite: "lax",
+        maxAge: 365 * 24 * 60 * 60,
+        path: "/",
+      });
+    }
 
     return response;
   } catch (error) {
-    console.error('Update profile error:', error);
-    return NextResponse.json({ error: 'Server error occurred' }, { status: 500 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "Email is already in use" }, { status: 400 });
+    }
+    console.error("Update profile error:", error);
+    return NextResponse.json({ error: "Server error occurred" }, { status: 500 });
   }
 }

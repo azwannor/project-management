@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { closeOpenTimeLogsForTicket } from "@/lib/timelog";
 
 export async function POST(req: Request) {
   try {
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const incoming = req.headers.get("x-telegram-bot-api-secret-token");
+      if (incoming !== webhookSecret) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     
     // Check if it's a callback query
@@ -35,11 +44,16 @@ export async function POST(req: Request) {
         let userId = null;
         
         if (telegramUsername) {
-          // find user by telegramUsername
+          const cleanUsername = telegramUsername.replace(/^@+/, "");
           const user = await prisma.user.findFirst({
-            where: { telegramUsername: telegramUsername }
+            where: {
+              OR: [
+                { telegramUsername: { equals: cleanUsername, mode: "insensitive" } },
+                { telegramUsername: { equals: `@${cleanUsername}`, mode: "insensitive" } },
+              ],
+            },
           });
-          
+
           if (user) {
             resolverName = user.name;
             userId = user.id;
@@ -62,18 +76,21 @@ export async function POST(req: Request) {
             ? `${ticket.solution}\n\n[Diselesaikan otomatis via Telegram oleh ${resolverName}]` 
             : `[Diselesaikan otomatis via Telegram oleh ${resolverName}]`;
 
+          const closedAt = new Date();
           await prisma.supportTicket.update({
             where: { id: ticketId },
             data: {
               status: "Done",
-              endDate: new Date(),
+              endDate: closedAt,
               solution: updatedSolution,
               ...(connectExecutors ? { executors: connectExecutors } : {})
             }
           });
+          await closeOpenTimeLogsForTicket(ticketId, closedAt);
 
           // 4. Update Telegram Message
-          const newText = message.text + `\n\n✅ <b>STATUS: SELESAI</b>\n<i>Diselesaikan oleh: ${resolverName}</i>`;
+          const baseText = message?.text || message?.caption || `Ticket #${ticket.ticketNumber || ticketId}`;
+          const newText = baseText + `\n\n✅ <b>STATUS: SELESAI</b>\n<i>Diselesaikan oleh: ${resolverName}</i>`;
           await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

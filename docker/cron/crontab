@@ -1,0 +1,5 @@
+# IT Tracker v2 Internal Cron Schedule (container timezone UTC; adjust if TZ=Asia/Makassar)
+# Maintenance check daily at 07:30 WITA (23:30 UTC previous day)
+30 23 * * * curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://ittracker-app:3000/api/cron/maintenance > /dev/null
+# Task & Support SLA Reminders Mon-Fri at 08:00 WITA (00:00 UTC)
+0 0 * * 1-5 curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://ittracker-app:3000/api/cron/reminders > /dev/null

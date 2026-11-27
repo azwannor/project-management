@@ -1,25 +1,35 @@
 import { isMaintenanceAdmin } from "@/lib/auth";
+import { requireActiveSession } from "@/lib/api-auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import path from "node:path";
 import * as xlsx from "xlsx";
+
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_IMPORT_EXTS = new Set([".xlsx", ".xls", ".csv"]);
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId || !isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Unauthorized. Admin only." }, { status: 403 });
+    const auth = await requireActiveSession();
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!isMaintenanceAdmin(auth.user)) {
+      return NextResponse.json({ error: "Forbidden. Admin only." }, { status: 403 });
     }
 
     const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file");
 
-    if (!file) {
+    if (!(file instanceof File) || file.size <= 0) {
       return NextResponse.json({ error: "Excel file not found" }, { status: 400 });
+    }
+    if (file.size > MAX_IMPORT_BYTES) {
+      return NextResponse.json({ error: "Excel file exceeds 10MB limit" }, { status: 400 });
+    }
+    const ext = path.extname(file.name).toLowerCase();
+    if (!ALLOWED_IMPORT_EXTS.has(ext)) {
+      return NextResponse.json({ error: "Unsupported file format. Use .xlsx, .xls, or .csv" }, { status: 400 });
     }
 
     // Baca file stream menjadi buffer
@@ -32,7 +42,7 @@ export async function POST(req: Request) {
     const worksheet = workbook.Sheets[sheetName];
     
     // Convert ke JSON
-    const data: any[] = xlsx.utils.sheet_to_json(worksheet);
+    const data = xlsx.utils.sheet_to_json<Record<string, unknown>>(worksheet);
 
     if (!data || data.length === 0) {
       return NextResponse.json({ error: "File kosong atau format salah" }, { status: 400 });
@@ -40,7 +50,7 @@ export async function POST(req: Request) {
 
     let successCount = 0;
     let failedCount = 0;
-    let errors: { row: number, assetCode: string, reason: string }[] = [];
+    const errors: { row: number; assetCode: string; reason: string }[] = [];
 
     // Master Cache
     const validAreas = [
@@ -69,13 +79,12 @@ export async function POST(req: Request) {
       const assetName = row["Asset Name"]?.toString().trim();
       const assetTypeName = row["Asset Type"]?.toString().trim();
       const area = row["Area"]?.toString().trim();
-      const location = row["Location"]?.toString().trim() || "";
       const serialNumber = row["Serial Number"]?.toString().trim() || "";
       
       let purchaseDate = null;
       if (row["Purchase Date"]) {
         // Excel menyimpan tanggal sebagai number kadang-kadang, kita coba parse
-        const pd = new Date(row["Purchase Date"]);
+        const pd = new Date(String(row["Purchase Date"]));
         if (!isNaN(pd.getTime())) purchaseDate = pd;
       }
 
@@ -127,9 +136,9 @@ export async function POST(req: Request) {
         });
 
         successCount++;
-      } catch (err: any) {
+      } catch (err: unknown) {
         failedCount++;
-        errors.push({ row: rowNum, assetCode, reason: err.message || "Database Error" });
+        errors.push({ row: rowNum, assetCode, reason: err instanceof Error ? err.message : "Database Error" });
       }
     }
 
@@ -142,8 +151,8 @@ export async function POST(req: Request) {
       errors
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Bulk import failed:", error);
-    return NextResponse.json({ error: error.message || "Failed to process import" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to process import" }, { status: 500 });
   }
 }

@@ -1,139 +1,301 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireActiveSession } from "@/lib/api-auth";
+import { collectDescendantTaskIds, wouldCreateTaskCycle } from "@/lib/project-helpers";
+import { closeOpenTimeLogsForTask, openAutoTimeLogForTask } from "@/lib/timelog";
+
+async function resolveExecutorUsers(executorIdsInput: unknown, executorTextInput: unknown) {
+  const explicitIds = Array.isArray(executorIdsInput)
+    ? executorIdsInput.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    : [];
+
+  if (Array.isArray(executorIdsInput)) {
+    if (explicitIds.length === 0) return { users: [], text: null };
+    const users = await prisma.user.findMany({
+      where: { id: { in: explicitIds } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    return { users, text: users.map((u) => u.name).join(", ") || null };
+  }
+
+  const rawText = typeof executorTextInput === "string" ? executorTextInput : "";
+  const names = rawText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (names.length === 0) return { users: [], text: null };
+
+  const users = await prisma.user.findMany({
+    where: { name: { in: names, mode: "insensitive" } },
+    select: { id: true, name: true },
+  });
+  return { users, text: names.join(", ") };
+}
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
 
-    // Build dynamic update data from all possible fields
-    const updateData: Record<string, any> = {};
-
-    if (body.title !== undefined) updateData.title = body.title;
-    if (body.status !== undefined) updateData.status = body.status;
-    if (body.priority !== undefined) updateData.priority = body.priority;
-    if (body.issue !== undefined) updateData.issue = body.issue;
-    if (body.solution !== undefined) updateData.solution = body.solution;
-    if (body.documentation !== undefined) updateData.documentation = body.documentation || null;
-    if (body.startDate !== undefined) updateData.startDate = new Date(body.startDate);
-    if (body.endDate !== undefined) updateData.endDate = new Date(body.endDate);
-    if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate ? new Date(body.actualEndDate) : null;
-    if (body.projectId !== undefined) updateData.projectId = body.projectId || null;
-    if (body.executor !== undefined) updateData.executor = body.executor || null;
-    if (body.parentId !== undefined) updateData.parentId = body.parentId;
-
-    const existingTask = await prisma.task.findUnique({ where: { id } });
-
-    const updatedTask = await prisma.task.update({
+    const existingTask = await prisma.task.findUnique({
       where: { id },
-      data: updateData,
-      include: { project: true }
+      include: { executors: true },
+    });
+    if (!existingTask) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    // Cycle validation before re-parenting
+    if (body.parentId !== undefined && body.parentId !== existingTask.parentId) {
+      const candidateParentId =
+        typeof body.parentId === "string" && body.parentId.trim() ? body.parentId.trim() : null;
+      if (candidateParentId) {
+        const allTasks = await prisma.task.findMany({
+          select: { id: true, parentId: true },
+        });
+        if (!allTasks.some((t) => t.id === candidateParentId)) {
+          return NextResponse.json({ error: "Target parent task not found" }, { status: 404 });
+        }
+        if (wouldCreateTaskCycle(id, candidateParentId, allTasks)) {
+          return NextResponse.json(
+            { error: "Circular parent-child dependency is not allowed" },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    const now = new Date();
+    const updateData: Record<string, unknown> = {};
+
+    if (typeof body.title === "string" && body.title.trim()) updateData.title = body.title.trim();
+    if (body.priority !== undefined) updateData.priority = body.priority;
+    if (body.issue !== undefined) {
+      updateData.issue = typeof body.issue === "string" ? body.issue.trim() || null : null;
+    }
+    if (body.solution !== undefined) {
+      updateData.solution = typeof body.solution === "string" ? body.solution.trim() || null : null;
+    }
+    if (body.documentation !== undefined) {
+      updateData.documentation =
+        typeof body.documentation === "string" ? body.documentation.trim() || null : null;
+    }
+    if (body.attachment !== undefined) {
+      updateData.attachment =
+        typeof body.attachment === "string" ? body.attachment.trim() || null : null;
+    }
+    if (body.attachmentKey !== undefined) {
+      updateData.attachmentKey =
+        typeof body.attachmentKey === "string" ? body.attachmentKey.trim() || null : null;
+    }
+    if (body.startDate !== undefined) {
+      const d = new Date(body.startDate);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ error: "Invalid startDate" }, { status: 400 });
+      }
+      updateData.startDate = d;
+    }
+    if (body.endDate !== undefined) {
+      const d = new Date(body.endDate);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ error: "Invalid endDate" }, { status: 400 });
+      }
+      updateData.endDate = d;
+    }
+    if (body.projectId !== undefined) updateData.projectId = body.projectId || null;
+    if (body.parentId !== undefined) updateData.parentId = body.parentId || null;
+
+    let parsedActualEndDate: Date | null = null;
+    if (body.actualEndDate) {
+      parsedActualEndDate = new Date(body.actualEndDate);
+      if (Number.isNaN(parsedActualEndDate.getTime())) {
+        return NextResponse.json({ error: "Invalid actualEndDate" }, { status: 400 });
+      }
+    }
+
+    if (body.status !== undefined) {
+      updateData.status = body.status;
+      if (body.status === "Ongoing") {
+        updateData.startedAt = existingTask.startedAt || now;
+        updateData.actualEndDate = null;
+      } else if (body.status === "Completed" || body.status === "Done") {
+        updateData.actualEndDate = parsedActualEndDate || now;
+      } else {
+        updateData.actualEndDate = parsedActualEndDate;
+      }
+    } else if (body.actualEndDate !== undefined) {
+      updateData.actualEndDate = parsedActualEndDate;
+    }
+
+    const hasExecutorUpdate = body.executorIds !== undefined || body.executor !== undefined;
+    let resolvedExecutors: { users: Array<{ id: string; name: string }>; text: string | null } | null = null;
+    if (hasExecutorUpdate) {
+      resolvedExecutors = await resolveExecutorUsers(body.executorIds, body.executor);
+      updateData.executor = resolvedExecutors.text;
+    }
+
+    const updatedTask = await prisma.$transaction(async (tx) => {
+      if (resolvedExecutors) {
+        await tx.taskExecutor.deleteMany({ where: { taskId: id } });
+        if (resolvedExecutors.users.length > 0) {
+          await tx.taskExecutor.createMany({
+            data: resolvedExecutors.users.map((u) => ({ taskId: id, userId: u.id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.task.update({
+        where: { id },
+        data: updateData,
+        include: {
+          project: true,
+          user: { select: { id: true, name: true, photo: true } },
+          executors: { include: { user: { select: { id: true, name: true, photo: true } } } },
+        },
+      });
     });
 
-    if (existingTask && existingTask.status !== updatedTask.status) {
+    // Hybrid TimeLog Automation on status transition
+    if (existingTask.status !== updatedTask.status) {
+      if (updatedTask.status === "Ongoing") {
+        await openAutoTimeLogForTask(updatedTask.id, auth.user.id, now);
+      } else {
+        await closeOpenTimeLogsForTask(updatedTask.id, now);
+      }
+
+      // Multi-level ancestor auto-complete / reopen automation
+      const isDoneStatus = (s: string) => s === "Completed" || s === "Done";
       if (updatedTask.parentId) {
-        // Subtask logic
-        if (updatedTask.status === "Completed" || updatedTask.status === "Done") {
-          const siblingTasks = await prisma.task.findMany({
-            where: { parentId: updatedTask.parentId }
-          });
-          const allCompleted = siblingTasks.every((t: any) => t.status === "Completed" || t.status === "Done");
-          
-          if (allCompleted) {
-            const parentTask = await prisma.task.update({
-              where: { id: updatedTask.parentId },
-              data: { status: "Completed" },
-              include: { project: true }
+        if (isDoneStatus(updatedTask.status)) {
+          const visited = new Set<string>([updatedTask.id]);
+          let currentParentId: string | null = updatedTask.parentId;
+
+          while (currentParentId && !visited.has(currentParentId)) {
+            visited.add(currentParentId);
+            const siblingTasks = await prisma.task.findMany({
+              where: { parentId: currentParentId },
+              select: { id: true, status: true },
             });
-            
-            const { sendTelegramMessage } = await import("@/lib/telegram");
-            const projectName = parentTask.project ? parentTask.project.name : "-";
-            let message = `✅ <b>MAIN TASK SELESAI (AUTO-COMPLETED)</b> ✅\n\n`;
-            message += `<b>Tugas Utama:</b> ${parentTask.title}\n`;
-            message += `<b>Project:</b> ${projectName}\n`;
-            message += `<b>Executor:</b> ${parentTask.executor || "-"}\n`;
-            message += `<i>Semua sub-task telah selesai sehingga tugas utama ini otomatis diselesaikan.</i>\n`;
-            await sendTelegramMessage(message);
+            if (siblingTasks.length === 0 || !siblingTasks.every((t) => isDoneStatus(t.status))) {
+              break;
+            }
+            const parentTask: {
+              id: string;
+              parentId: string | null;
+              title: string;
+              executor: string | null;
+              project: { name: string } | null;
+            } = await prisma.task.update({
+              where: { id: currentParentId },
+              data: { status: "Completed", actualEndDate: now },
+              include: { project: { select: { name: true } } },
+            });
+            await closeOpenTimeLogsForTask(parentTask.id, now);
+            currentParentId = parentTask.parentId;
           }
         } else {
-          // Subtask is not completed, revert parent if it was completed
-          const parentTask = await prisma.task.findUnique({
-            where: { id: updatedTask.parentId }
-          });
-          if (parentTask && (parentTask.status === "Completed" || parentTask.status === "Done")) {
-            await prisma.task.update({
-              where: { id: parentTask.id },
-              data: { status: "Ongoing" }
-            });
-          }
-        }
-      } else {
-        // Main task logic
-        if (updatedTask.status === "Completed" || updatedTask.status === "Done") {
-           const { sendTelegramMessage } = await import("@/lib/telegram");
-           const projectName = updatedTask.project ? updatedTask.project.name : "-";
-           let message = `🎉 <b>MAIN TASK SELESAI</b> 🎉\n\n`;
-           message += `<b>Tugas Utama:</b> ${updatedTask.title}\n`;
-           message += `<b>Project:</b> ${projectName}\n`;
-           message += `<b>Executor:</b> ${updatedTask.executor || "-"}\n`;
-           message += `<i>Tugas utama ini telah berhasil diselesaikan!</i>\n`;
-           
-           await sendTelegramMessage(message);
-        }
-      }
-    }
+          const visited = new Set<string>([updatedTask.id]);
+          let currentParentId: string | null = updatedTask.parentId;
 
-    if (body.executor !== undefined && existingTask && existingTask.executor !== body.executor) {
-      if (body.executor) {
-        const executors = body.executor.split(",").map((e: string) => e.trim()).filter(Boolean);
-        const existingExecutors = existingTask.executor ? existingTask.executor.split(",").map((e: string) => e.trim()) : [];
-        
-        for (const executorName of executors) {
-          if (!existingExecutors.includes(executorName)) {
-            const executorUser = await prisma.user.findFirst({
-              where: { name: executorName }
+          while (currentParentId && !visited.has(currentParentId)) {
+            visited.add(currentParentId);
+            const parentTask: {
+              id: string;
+              status: string;
+              parentId: string | null;
+            } | null = await prisma.task.findUnique({
+              where: { id: currentParentId },
+              select: { id: true, status: true, parentId: true },
             });
-            if (executorUser) {
-              await prisma.notification.create({
-                data: {
-                  userId: executorUser.id,
-                  title: "Tugas Dialokasikan",
-                  message: `Anda ditugaskan pada task: "${updatedTask.title}"`,
-                  type: "ASSIGNMENT",
-                  link: "/"
-                }
+            if (!parentTask) break;
+            if (isDoneStatus(parentTask.status)) {
+              await prisma.task.update({
+                where: { id: parentTask.id },
+                data: { status: "Ongoing", actualEndDate: null },
               });
             }
+            currentParentId = parentTask.parentId;
           }
         }
       }
     }
 
-    return NextResponse.json(updatedTask);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Notify newly assigned executors
+    if (resolvedExecutors) {
+      const prevIds = new Set(existingTask.executors.map((e) => e.userId));
+      for (const u of resolvedExecutors.users) {
+        if (!prevIds.has(u.id)) {
+          await prisma.notification.create({
+            data: {
+              userId: u.id,
+              title: "Tugas Dialokasikan",
+              message: `Anda ditugaskan pada task: "${updatedTask.title}"`,
+              type: "ASSIGNMENT",
+              link: updatedTask.projectId ? `/projects?projectId=${updatedTask.projectId}` : "/projects",
+            },
+          });
+        }
+      }
+    }
+
+    const timeLogs = await prisma.timeLog.findMany({
+      where: { taskId: updatedTask.id },
+      include: { user: { select: { id: true, name: true, photo: true } } },
+      orderBy: { startTime: "desc" },
+    });
+
+    return NextResponse.json({ ...updatedTask, timeLogs });
+  } catch (error) {
+    console.error("Failed to update task:", error);
+    return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
-    // Delete subtasks first to avoid foreign key constraints
-    await prisma.task.deleteMany({
-      where: { parentId: id },
+    const allTasks = await prisma.task.findMany({
+      select: { id: true, parentId: true },
     });
-    // Delete the task itself
-    await prisma.task.delete({
-      where: { id },
+
+    if (!allTasks.some((t) => t.id === id)) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    const descendantIds = collectDescendantTaskIds(id, allTasks);
+    const idsToDelete = [...descendantIds, id];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.task.updateMany({
+        where: { id: { in: idsToDelete } },
+        data: { parentId: null },
+      });
+      await tx.task.deleteMany({
+        where: { id: { in: idsToDelete } },
+      });
     });
-    return NextResponse.json({ message: "Task deleted successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ message: "Task deleted successfully", deletedCount: idsToDelete.length });
+  } catch (error) {
+    console.error("Failed to delete task:", error);
+    return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
   }
 }

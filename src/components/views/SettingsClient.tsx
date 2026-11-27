@@ -1,370 +1,157 @@
 "use client";
 
 import { useState } from "react";
-import { User, Lock, Mail, Camera, Shield, Users, Plus, Save, Loader2, AlertCircle, Pencil, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { User as UserIcon, Users, Database } from "lucide-react";
+import { useI18n } from "@/i18n";
+import ProfilePreferencesTab from "./settings/ProfilePreferencesTab";
+import UserManagementTab from "./settings/UserManagementTab";
+import MasterAndApiTab from "./settings/MasterAndApiTab";
+import type {
+  MaskedExternalKey,
+  MasterAssetType,
+  MasterDivision,
+  MasterLocation,
+  MasterRegionalArea,
+  MasterSlaPolicy,
+  MasterSupportModule,
+  SettingsUser,
+} from "./settings/types";
 
-export default function SettingsClient({ currentUser, allUsers }: { currentUser: any, allUsers: any[] }) {
-  const [activeTab, setActiveTab] = useState("profile");
-  const [profileData, setProfileData] = useState({
-    name: currentUser.name || "",
-    email: currentUser.email || "",
-    photo: currentUser.photo || "",
-    telegramUsername: currentUser.telegramUsername || "",
-    telegramChatId: currentUser.telegramChatId || "",
-    oldPassword: "",
-    newPassword: "",
-  });
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  const router = useRouter();
-
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setMessage(null);
-
-    try {
-      const res = await fetch("/api/users/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileData),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage({ type: 'error', text: data.error || "Failed to save profile" });
-      } else {
-        setMessage({ type: 'success', text: "Profile updated successfully!" });
-        setProfileData(prev => ({ ...prev, oldPassword: "", newPassword: "" }));
-        router.refresh();
-      }
-    } catch (error) {
-      setMessage({ type: 'error', text: "Server error occurred" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all";
-
-  return (
-    <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto">
-      {currentUser.role?.toLowerCase() === "admin" && (
-        <div className="flex border-b border-gray-200 mb-6 gap-6">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`pb-3 text-sm font-semibold border-b-2 transition-all ${activeTab === "profile" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            My Profile
-          </button>
-          <button
-            onClick={() => setActiveTab("users")}
-            className={`pb-3 text-sm font-semibold border-b-2 transition-all ${activeTab === "users" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            User Management
-          </button>
-        </div>
-      )}
-
-      {activeTab === "profile" && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="text-lg font-semibold text-slate-800">Personal Information</h2>
-          </div>
-          
-          <div className="p-6">
-            {message && (
-              <div className={`mb-6 px-4 py-3 rounded-lg border flex items-center ${message.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                <AlertCircle className="w-4 h-4 mr-2 shrink-0" />
-                <span className="text-sm font-medium">{message.text}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleProfileUpdate} className="space-y-6">
-              <div className="flex flex-col md:flex-row gap-8">
-                {/* Photo Upload Simulation */}
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center text-blue-500 border-4 border-white shadow-md relative overflow-hidden">
-                    {profileData.photo ? (
-                      <img src={profileData.photo} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-10 h-10 opacity-50" />
-                    )}
-                  </div>
-                  <label className="cursor-pointer bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5" /> Change Photo
-                    <input type="text" placeholder="URL Foto" className="hidden" 
-                      onChange={(e) => {
-                        const url = prompt("Enter Photo URL:");
-                        if (url) setProfileData({...profileData, photo: url});
-                      }} 
-                    />
-                  </label>
-                </div>
-
-                <div className="flex-1 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
-                      <input type="text" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} className={inputClass} required />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
-                      <input type="email" value={profileData.email} onChange={e => setProfileData({...profileData, email: e.target.value})} className={inputClass} required />
-                    </div>
-                    <div className="md:col-span-1">
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">Telegram Username <span className="text-xs font-normal normal-case text-gray-400 ml-1">(Tanpa @)</span></label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">@</span>
-                        </div>
-                        <input type="text" value={profileData.telegramUsername} onChange={e => setProfileData({...profileData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username_telegram_anda" />
-                      </div>
-                    </div>
-                    <div className="md:col-span-1">
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">Telegram Chat ID</label>
-                      <input type="text" value={profileData.telegramChatId} onChange={e => setProfileData({...profileData, telegramChatId: e.target.value})} className={inputClass} placeholder="e.g. 123456789" />
-                    </div>
-                    <div className="md:col-span-2 mt-0">
-                      <p className="text-[11px] text-gray-500 leading-relaxed">
-                        Diperlukan agar sistem bisa mengenali Anda saat Anda menekan tombol "Tandai Selesai" (Username) dan untuk mengirimkan notifikasi via DM (Chat ID).
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-gray-100">
-                    <h3 className="text-sm font-semibold text-slate-800 mb-4">Change Password <span className="text-xs font-normal text-gray-400">(Optional)</span></h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Old Password</label>
-                        <input type="password" value={profileData.oldPassword} onChange={e => setProfileData({...profileData, oldPassword: e.target.value})} className={inputClass} placeholder="••••••••" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">New Password</label>
-                        <input type="password" value={profileData.newPassword} onChange={e => setProfileData({...profileData, newPassword: e.target.value})} className={inputClass} placeholder="••••••••" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
-                <button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:hover:translate-y-0">
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "users" && currentUser.role?.toLowerCase() === "admin" && (
-        <UserManagement users={allUsers} inputClass={inputClass} />
-      )}
-    </div>
-  );
+interface SettingsClientProps {
+  initialCurrentUser: SettingsUser;
+  initialUsers: SettingsUser[];
+  initialDivisions: MasterDivision[];
+  initialLocations: MasterLocation[];
+  initialAssetTypes: MasterAssetType[];
+  initialRegionalAreas: MasterRegionalArea[];
+  initialSupportModules: MasterSupportModule[];
+  initialSlaPolicies: MasterSlaPolicy[];
+  initialExternalKeys: MaskedExternalKey[];
 }
 
-function UserManagement({ users, inputClass }: { users: any[], inputClass: string }) {
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingUser, setEditingUser] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [] as string[], canViewTeamLogs: false });
-  const [loading, setLoading] = useState(false);
-  const error = "";
-  const [errorState, setError] = useState("");
-  const router = useRouter();
+export default function SettingsClient({
+  initialCurrentUser,
+  initialUsers,
+  initialDivisions,
+  initialLocations,
+  initialAssetTypes,
+  initialRegionalAreas,
+  initialSupportModules,
+  initialSlaPolicies,
+  initialExternalKeys,
+}: SettingsClientProps) {
+  const { t } = useI18n();
+  const isAdmin = initialCurrentUser.role?.toLowerCase() === "admin";
 
-  const AVAILABLE_AREAS = [
-    "JATENG 1", "JATENG 2", "JATENG 3", "KALBAR", "KALTIM", "KALSELTENG", "DENPASAR", 
-    "JAKARTA 1", "JAKARTA 2", "JAKARTA 3", "JAKARTA 4", "JAKARTA 5", "JAKARTA 6", "JAKARTA 7", 
-    "KAM PROJECT", "MEDAN & ACEH RAYA", "TANGERANG", "SURABAYA 1", "SURABAYA 2", "MALANG", 
-    "SULAWESI 1", "SULAWESI 2", "SULAWESI 3", "JAWA BARAT 1", "JAWA BARAT 2", "SUMBANGSEL 1", "SUMBANGSEL 2"
+  const [activeTab, setActiveTab] = useState<"profile" | "users" | "master">("profile");
+  const [currentUser, setCurrentUser] = useState<SettingsUser>(initialCurrentUser);
+  const [users, setUsers] = useState<SettingsUser[]>(initialUsers);
+  const [divisions, setDivisions] = useState<MasterDivision[]>(initialDivisions);
+  const [locations, setLocations] = useState<MasterLocation[]>(initialLocations);
+  const [assetTypes, setAssetTypes] = useState<MasterAssetType[]>(initialAssetTypes);
+  const [regionalAreas, setRegionalAreas] = useState<MasterRegionalArea[]>(initialRegionalAreas);
+  const [supportModules, setSupportModules] = useState<MasterSupportModule[]>(initialSupportModules);
+  const [slaPolicies, setSlaPolicies] = useState<MasterSlaPolicy[]>(initialSlaPolicies);
+  const [externalKeys, setExternalKeys] = useState<MaskedExternalKey[]>(initialExternalKeys);
+
+  const tabs = [
+    {
+      id: "profile" as const,
+      label: t.settings.tabProfile,
+      shortLabel: t.settings.tabProfileShort,
+      icon: UserIcon,
+    },
+    ...(isAdmin
+      ? [
+          {
+            id: "users" as const,
+            label: `${t.settings.tabUsers} (${users.length})`,
+            shortLabel: t.settings.tabUsersShort,
+            icon: Users,
+          },
+          {
+            id: "master" as const,
+            label: t.settings.tabMaster,
+            shortLabel: t.settings.tabMasterShort,
+            icon: Database,
+          },
+        ]
+      : []),
   ];
 
-  const handleSubmitUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const url = editingUser ? `/api/users/${editingUser.id}` : "/api/users";
-      const method = editingUser ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setIsAdding(false);
-      setEditingUser(null);
-      setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [], canViewTeamLogs: false });
-      router.refresh();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteUser = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete user ${name}?`)) return;
-    try {
-      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
-      }
-      router.refresh();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-slate-800">User List</h2>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingUser(null); setFormData({ name: "", email: "", password: "", jobDesk: "", role: "Staff", telegramUsername: "", telegramChatId: "", handledAreas: [], canViewTeamLogs: false }); }} className="bg-white border border-gray-200 text-gray-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5">
-          <Plus className="w-3.5 h-3.5" /> Add User
-        </button>
+    <div className="p-3 sm:p-5 lg:p-6 max-w-[1440px] w-full mx-auto space-y-5 overflow-x-hidden">
+      {/* Top Pill Switcher Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl px-3.5 py-2.5 shadow-xs">
+        <div
+          className={`grid gap-1 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-full p-1 ${
+            isAdmin ? "grid-cols-3 w-full sm:w-auto" : "grid-cols-1 w-auto"
+          }`}
+        >
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                  active
+                    ? "bg-[var(--bg-surface)] text-[var(--brand)] shadow-xs"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-ink)]"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">{tab.shortLabel}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-[var(--brand-tint)] border border-[var(--brand-stroke)] font-mono-code text-[10px] font-bold text-[var(--brand)] uppercase">
+          {isAdmin ? "ADMIN ACCESS" : "STAFF PROFILE"}
+        </span>
       </div>
 
-      {(isAdding || editingUser) && (
-        <div className="p-6 bg-blue-50/30 border-b border-gray-100">
-          <form onSubmit={handleSubmitUser} className="space-y-4">
-            {errorState && <div className="text-red-500 text-xs font-semibold">{errorState}</div>}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Name</label>
-                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={inputClass} required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
-                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className={inputClass} required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password {editingUser && "(Leave blank to keep)"}</label>
-                <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className={inputClass} required={!editingUser} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Job Desk</label>
-                <input type="text" value={formData.jobDesk} onChange={e => setFormData({...formData, jobDesk: e.target.value})} className={inputClass} required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Role</label>
-                <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className={inputClass}>
-                  <option value="Staff">Staff</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Telegram Username</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span className="text-gray-500 sm:text-sm">@</span>
-                  </div>
-                  <input type="text" value={formData.telegramUsername} onChange={e => setFormData({...formData, telegramUsername: e.target.value.replace('@', '')})} className={`${inputClass} pl-8`} placeholder="username" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Telegram Chat ID</label>
-                <input type="text" value={formData.telegramChatId} onChange={e => setFormData({...formData, telegramChatId: e.target.value})} className={inputClass} placeholder="e.g. 123456789" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Handled Areas (For Auto-Assign Master Data)</label>
-                <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-white max-h-48 overflow-y-auto">
-                  {AVAILABLE_AREAS.map(area => (
-                    <label key={area} className="flex items-center gap-1.5 text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-100 cursor-pointer hover:bg-gray-100">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.handledAreas.includes(area)}
-                        onChange={(e) => {
-                          const newAreas = e.target.checked 
-                            ? [...formData.handledAreas, area]
-                            : formData.handledAreas.filter(a => a !== area);
-                          setFormData({...formData, handledAreas: newAreas});
-                        }}
-                        className="w-3 h-3 text-blue-600 rounded border-gray-300"
-                      />
-                      {area}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Role Access</label>
-                <div className="p-3 border border-gray-200 rounded-lg bg-white flex items-start gap-2">
-                  <input 
-                    type="checkbox"
-                    id="canViewTeamLogs"
-                    checked={formData.canViewTeamLogs}
-                    onChange={e => setFormData({...formData, canViewTeamLogs: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 mt-0.5"
-                  />
-                  <div>
-                    <label htmlFor="canViewTeamLogs" className="text-sm font-semibold text-gray-800 cursor-pointer">Can View Team Logs</label>
-                    <p className="text-xs text-gray-500 mt-0.5">Berikan akses ke pengguna ini untuk melihat tiket support seluruh tim (Team Logs) meskipun bukan Admin.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => { setIsAdding(false); setEditingUser(null); }} className="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg">Cancel</button>
-              <button type="submit" disabled={loading} className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center">
-                {loading && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />} {editingUser ? "Update" : "Save"}
-              </button>
-            </div>
-          </form>
-        </div>
+      {activeTab === "profile" && (
+        <ProfilePreferencesTab
+          currentUser={currentUser}
+          onUserUpdated={(updated) => {
+            setCurrentUser(updated);
+            setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+          }}
+        />
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
-            <tr>
-              <th className="px-6 py-3">User</th>
-              <th className="px-6 py-3">Email</th>
-              <th className="px-6 py-3">Job Desk</th>
-              <th className="px-6 py-3">Role</th>
-              <th className="px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {users.map(u => (
-              <tr key={u.id} className="hover:bg-gray-50/50">
-                <td className="px-6 py-3 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center text-blue-600 text-xs font-bold shadow-inner">
-                    {u.photo ? <img src={u.photo} alt={u.name} className="w-full h-full rounded-full object-cover" /> : u.name.charAt(0)}
-                  </div>
-                  <span className="font-semibold text-gray-800">{u.name}</span>
-                </td>
-                <td className="px-6 py-3 text-gray-600">{u.email}</td>
-                <td className="px-6 py-3 text-gray-600">{u.jobDesk}</td>
-                <td className="px-6 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${u.role?.toLowerCase() === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {u.role}
-                  </span>
-                </td>
-                <td className="px-6 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: "", jobDesk: u.jobDesk || "", role: u.role, telegramUsername: u.telegramUsername || "", telegramChatId: u.telegramChatId || "", handledAreas: u.handledAreas || [], canViewTeamLogs: u.canViewTeamLogs || false }); setIsAdding(false); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDeleteUser(u.id, u.name)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {activeTab === "users" && isAdmin && (
+        <UserManagementTab
+          currentUserId={currentUser.id}
+          users={users}
+          regionalAreas={regionalAreas}
+          onUsersChange={setUsers}
+        />
+      )}
+
+      {activeTab === "master" && isAdmin && (
+        <MasterAndApiTab
+          divisions={divisions}
+          locations={locations}
+          assetTypes={assetTypes}
+          regionalAreas={regionalAreas}
+          supportModules={supportModules}
+          slaPolicies={slaPolicies}
+          externalKeys={externalKeys}
+          onDivisionsChange={setDivisions}
+          onLocationsChange={setLocations}
+          onAssetTypesChange={setAssetTypes}
+          onAreasChange={setRegionalAreas}
+          onModulesChange={setSupportModules}
+          onSlaChange={setSlaPolicies}
+          onKeysChange={setExternalKeys}
+        />
+      )}
     </div>
   );
 }

@@ -1,93 +1,125 @@
-import { isMaintenanceAdmin } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { isMaintenanceAdmin } from "@/lib/auth";
 
 // PATCH /api/maintenance-templates/[id] — Update template + sync checklist items (Admin only)
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isMaintenanceAdmin(auth.user)) {
+    return NextResponse.json(
+      { error: "Forbidden. Only admins can update templates." },
+      { status: 403 }
+    );
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Forbidden. Only admins can update templates." }, { status: 403 });
-    }
-
     const { id } = await params;
     const body = await req.json();
-    const { templateName, assetTypeId, defaultFrequencyDays, reminderOffsetDays, checklistItems } = body;
+    const { templateName, assetTypeId, defaultFrequencyDays, reminderOffsetDays, checklistItems } =
+      body;
 
-    // Cek template exists
     const existingTemplate = await prisma.maintenanceTemplate.findUnique({
       where: { id },
       include: { checklistItems: true },
     });
-
     if (!existingTemplate) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
 
-    // Build update data untuk template
-    const templateUpdateData: any = {};
-    if (templateName !== undefined) templateUpdateData.templateName = templateName.trim();
-    if (assetTypeId !== undefined) templateUpdateData.assetTypeId = assetTypeId;
-    if (defaultFrequencyDays !== undefined) templateUpdateData.defaultFrequencyDays = defaultFrequencyDays;
-    if (reminderOffsetDays !== undefined) templateUpdateData.reminderOffsetDays = reminderOffsetDays;
+    const templateUpdateData: Prisma.MaintenanceTemplateUncheckedUpdateInput = {};
+    if (templateName !== undefined) {
+      const name = typeof templateName === "string" ? templateName.trim() : "";
+      if (!name) return NextResponse.json({ error: "Template name cannot be empty" }, { status: 400 });
+      templateUpdateData.templateName = name;
+    }
+    if (assetTypeId !== undefined) {
+      const at = await prisma.assetType.findUnique({
+        where: { id: String(assetTypeId) },
+        select: { id: true },
+      });
+      if (!at) return NextResponse.json({ error: "Asset type not found" }, { status: 400 });
+      templateUpdateData.assetTypeId = at.id;
+    }
+    if (defaultFrequencyDays !== undefined) {
+      const parsedFreq = Number(defaultFrequencyDays);
+      if (!Number.isInteger(parsedFreq) || parsedFreq < 1 || parsedFreq > 730) {
+        return NextResponse.json(
+          { error: "defaultFrequencyDays must be an integer between 1 and 730" },
+          { status: 400 }
+        );
+      }
+      templateUpdateData.defaultFrequencyDays = parsedFreq;
+    }
+    if (reminderOffsetDays !== undefined) {
+      const parsedOffset = Number(reminderOffsetDays);
+      if (!Number.isInteger(parsedOffset) || parsedOffset < 0 || parsedOffset > 90) {
+        return NextResponse.json(
+          { error: "reminderOffsetDays must be an integer between 0 and 90" },
+          { status: 400 }
+        );
+      }
+      templateUpdateData.reminderOffsetDays = parsedOffset;
+    }
 
-    // Sync checklist items jika disediakan
-    // Strategy: items dengan id → update, items tanpa id → create, items yang hilang → delete
     if (checklistItems !== undefined) {
+      if (!Array.isArray(checklistItems)) {
+        return NextResponse.json({ error: "checklistItems must be an array" }, { status: 400 });
+      }
+      const existingIdSet = new Set(existingTemplate.checklistItems.map((i) => i.id));
+      for (const item of checklistItems) {
+        if (item?.id && !existingIdSet.has(String(item.id))) {
+          return NextResponse.json(
+            { error: `Checklist item '${item.id}' does not belong to this template` },
+            { status: 400 }
+          );
+        }
+        if (!item?.itemText || typeof item.itemText !== "string" || !item.itemText.trim()) {
+          return NextResponse.json(
+            { error: "All checklist items must have non-empty itemText" },
+            { status: 400 }
+          );
+        }
+      }
+
       const incomingIds = checklistItems
-        .filter((item: any) => item.id)
-        .map((item: any) => item.id);
+        .filter((item: { id?: string }) => Boolean(item.id))
+        .map((item: { id: string }) => String(item.id));
+      const toDeleteIds = existingTemplate.checklistItems
+        .map((i) => i.id)
+        .filter((eid) => !incomingIds.includes(eid));
 
-      const existingIds = existingTemplate.checklistItems.map(item => item.id);
-
-      // IDs yang perlu dihapus (ada di existing tapi tidak ada di incoming)
-      const toDeleteIds = existingIds.filter(existingId => !incomingIds.includes(existingId));
-
-      // Jalankan dalam transaction
       await prisma.$transaction(async (tx) => {
-        // 1. Update template fields
         if (Object.keys(templateUpdateData).length > 0) {
-          await tx.maintenanceTemplate.update({
-            where: { id },
-            data: templateUpdateData,
-          });
+          await tx.maintenanceTemplate.update({ where: { id }, data: templateUpdateData });
         }
-
-        // 2. Delete removed items
         if (toDeleteIds.length > 0) {
-          await tx.checklistItemMaster.deleteMany({
-            where: { id: { in: toDeleteIds } },
-          });
+          await tx.checklistItemMaster.deleteMany({ where: { id: { in: toDeleteIds } } });
         }
-
-        // 3. Upsert items (update existing + create new)
-        for (const item of checklistItems) {
+        for (let idx = 0; idx < checklistItems.length; idx++) {
+          const item = checklistItems[idx];
           if (item.id) {
-            // Update existing item
             await tx.checklistItemMaster.update({
-              where: { id: item.id },
+              where: { id: String(item.id) },
               data: {
-                itemText: item.itemText,
-                order: item.order,
+                itemText: item.itemText.trim(),
+                order: item.order ?? idx + 1,
                 isRequired: item.isRequired ?? true,
               },
             });
           } else {
-            // Create new item
             await tx.checklistItemMaster.create({
               data: {
                 templateId: id,
-                itemText: item.itemText,
-                order: item.order,
+                itemText: item.itemText.trim(),
+                order: item.order ?? idx + 1,
                 isRequired: item.isRequired ?? true,
               },
             });
@@ -95,21 +127,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       });
     } else if (Object.keys(templateUpdateData).length > 0) {
-      // Hanya update template fields (tanpa sync checklist)
-      await prisma.maintenanceTemplate.update({
-        where: { id },
-        data: templateUpdateData,
-      });
+      await prisma.maintenanceTemplate.update({ where: { id }, data: templateUpdateData });
     }
 
-    // Fetch updated template
     const updatedTemplate = await prisma.maintenanceTemplate.findUnique({
       where: { id },
       include: {
         assetType: { select: { id: true, name: true } },
-        checklistItems: {
-          orderBy: { order: "asc" },
-        },
+        checklistItems: { orderBy: { order: "asc" } },
       },
     });
 
@@ -120,45 +145,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-// DELETE /api/maintenance-templates/[id] — Delete template + cascade checklist items (Admin only)
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// DELETE /api/maintenance-templates/[id] — Delete template when unused (Admin only)
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isMaintenanceAdmin(auth.user)) {
+    return NextResponse.json(
+      { error: "Forbidden. Only admins can delete templates." },
+      { status: 403 }
+    );
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Forbidden. Only admins can delete templates." }, { status: 403 });
-    }
-
     const { id } = await params;
-
-    // Cek apakah masih ada schedule yang mereferensi
     const template = await prisma.maintenanceTemplate.findUnique({
       where: { id },
-      include: {
-        _count: { select: { schedules: true } },
-      },
+      include: { _count: { select: { schedules: true } } },
     });
-
     if (!template) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
-
     if (template._count.schedules > 0) {
       return NextResponse.json(
-        { error: `Cannot delete. There are still ${template._count.schedules} maintenance schedules using this template.` },
+        {
+          error: `Cannot delete. There are still ${template._count.schedules} maintenance schedules using this template.`,
+        },
         { status: 400 }
       );
     }
 
-    // Delete template (ChecklistItemMaster akan cascade delete karena onDelete: Cascade di schema)
     await prisma.maintenanceTemplate.delete({ where: { id } });
-
     return NextResponse.json({ success: true, message: "Template deleted successfully" });
   } catch (error) {
     console.error("Failed to delete template:", error);

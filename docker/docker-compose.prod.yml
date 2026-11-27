@@ -1,0 +1,72 @@
+services:
+  ittracker-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ittracker-app
+    restart: unless-stopped
+    env_file:
+      - ../.env.production
+    depends_on:
+      ittracker-postgres:
+        condition: service_healthy
+      ittracker-minio:
+        condition: service_started
+    networks:
+      - ittracker_internal
+      - caddy_shared
+
+  ittracker-postgres:
+    image: postgres:17-alpine
+    container_name: ittracker-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-it_tracker}
+    volumes:
+      - ittracker_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-it_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ittracker_internal
+
+  ittracker-minio:
+    image: minio/minio:latest
+    container_name: ittracker-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - ittracker_miniodata:/data
+    networks:
+      - ittracker_internal
+
+  ittracker-cron:
+    image: alpine:3.20
+    container_name: ittracker-cron
+    restart: unless-stopped
+    env_file:
+      - ../.env.production
+    volumes:
+      - ./cron/crontab:/etc/crontabs/root:ro
+    command: sh -c "apk add --no-cache curl && crond -f -l 8"
+    depends_on:
+      - ittracker-app
+    networks:
+      - ittracker_internal
+
+volumes:
+  ittracker_pgdata:
+  ittracker_miniodata:
+
+networks:
+  ittracker_internal:
+    driver: bridge
+  caddy_shared:
+    external: true

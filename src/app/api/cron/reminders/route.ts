@@ -1,120 +1,191 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { isAuthorizedCronRequest } from "@/lib/auth";
+import { classifySupportTicketDueState, classifyTaskDueState, type CronDueState } from "@/lib/cron-helpers";
+
+function formatDueBadge(state: CronDueState, targetDate: Date, now: Date): string {
+  const diffMins = Math.round((targetDate.getTime() - now.getTime()) / 60_000);
+  if (state === "OVERDUE") {
+    const absMins = Math.max(1, Math.abs(diffMins));
+    if (absMins < 60) return `Overdue ${absMins}m`;
+    const hrs = Math.round(absMins / 60);
+    return hrs >= 24 ? `Overdue ${Math.round(hrs / 24)}h` : `Overdue ${hrs}j`;
+  }
+  const remMins = Math.max(1, diffMins);
+  if (remMins < 60) return `Sisa ${remMins}m`;
+  return `Sisa ${Math.max(1, Math.round(remMins / 60))}j`;
+}
 
 export async function GET(req: Request) {
   try {
+    if (!isAuthorizedCronRequest(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const now = new Date();
+    const nowMs = now.getTime();
 
-    // 1. Process Support Tickets (Overdue if > 2 hours from startDate)
-    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    
-    const overdueSupport = await prisma.supportTicket.findMany({
-      where: {
-        status: { in: ["Ongoing", "Not Started"] },
-        startDate: { lt: twoHoursAgo }
-      },
-      include: { executors: true }
-    });
+    const [activeSupportTickets, slaPolicies, activeTasks] = await Promise.all([
+      prisma.supportTicket.findMany({
+        where: {
+          ticketType: "REQUEST",
+          status: { in: ["Ongoing", "Not Started"] },
+        },
+        include: { executors: true },
+        orderBy: { slaDueAt: "asc" },
+      }),
+      prisma.slaPolicy.findMany({
+        select: {
+          priority: true,
+          firstResponseMinutes: true,
+          targetMinutes: true,
+          reminderThresholdPercent: true,
+        },
+      }),
+      prisma.task.findMany({
+        where: {
+          status: { in: ["Ongoing", "Not Started"] },
+        },
+        include: {
+          project: { select: { name: true } },
+          executors: { include: { user: true } },
+        },
+        orderBy: { endDate: "asc" },
+      }),
+    ]);
 
-    // 2. Process Project Tasks (Overdue if > endDate)
-    const overdueTasks = await prisma.task.findMany({
-      where: {
-        status: { in: ["Ongoing", "Not Started"] },
-        endDate: { lt: now }
-      },
-      include: { project: true }
-    });
+    const supportAlerts = activeSupportTickets
+      .map((ticket) => {
+        const state = classifySupportTicketDueState(ticket, slaPolicies, nowMs);
+        return state ? { ticket, state } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    if (overdueSupport.length === 0 && overdueTasks.length === 0) {
-      return NextResponse.json({ success: true, message: "No overdue items" });
+    const taskAlerts = activeTasks
+      .map((task) => {
+        const state = classifyTaskDueState(task, nowMs, 24);
+        return state ? { task, state } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    if (supportAlerts.length === 0 && taskAlerts.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "No approaching or overdue items",
+        counts: { support: 0, tasks: 0, dmsSent: 0 },
+      });
     }
 
-    // Build message
-    let messageText = `🚨 <b>REKAP TUGAS & TIKET OVERDUE</b> 🚨\n\nHalo tim, berikut adalah daftar tugas dan tiket yang melewati batas waktu penyelesaian dan belum selesai:\n\n`;
-    
-    let hasContent = false;
-    const userDMs = new Map<string, string[]>();
-
-    if (overdueSupport.length > 0) {
-      messageText += `🔧 <b>SUPPORT TICKETS (> 2 Jam):</b>\n`;
-      overdueSupport.forEach((ticket, idx) => {
-        const mentions = ticket.executors
-          .map(e => e.telegramUsername ? `@${e.telegramUsername.replace('@', '')}` : e.name)
-          .join(", ");
-        messageText += `${idx + 1}. ${ticket.taskName} - ${mentions || "Belum ada pelaksana"}\n`;
-
-        ticket.executors.forEach(e => {
-          if (e.telegramChatId) {
-            if (!userDMs.has(e.telegramChatId)) userDMs.set(e.telegramChatId, []);
-            userDMs.get(e.telegramChatId)!.push(`🔧 Support Ticket: <b>${ticket.taskName}</b> (Overdue > 2 Jam)`);
-          }
+    // Resolve legacy comma-separated task executor names when TaskExecutor join table is empty
+    const legacyNames = new Set<string>();
+    for (const { task } of taskAlerts) {
+      if (task.executors.length === 0 && task.executor) {
+        task.executor.split(",").forEach((n) => {
+          const clean = n.trim();
+          if (clean) legacyNames.add(clean);
         });
-      });
-      messageText += `\n`;
-      hasContent = true;
-    }
-
-    if (overdueTasks.length > 0) {
-      messageText += `📋 <b>PROJECT TASKS (Melewati End Date):</b>\n`;
-      
-      const allExecutorNames = new Set<string>();
-      overdueTasks.forEach(t => {
-        if (t.executor) {
-          t.executor.split(",").forEach(n => allExecutorNames.add(n.trim()));
-        }
-      });
-      
-      const users = await prisma.user.findMany({
-        where: { name: { in: Array.from(allExecutorNames) } }
-      });
-      
-      const userMap = new Map();
-      const userChatIdMap = new Map();
-      
-      users.forEach(u => {
-        userMap.set(u.name, u.telegramUsername ? `@${u.telegramUsername.replace('@', '')}` : u.name);
-        if (u.telegramChatId) {
-          userChatIdMap.set(u.name, u.telegramChatId);
-        }
-      });
-
-      overdueTasks.forEach((task, idx) => {
-        const executorNames = task.executor ? task.executor.split(",").map(n => n.trim()).filter(Boolean) : [];
-        const mentions = executorNames.map(n => userMap.get(n) || n).join(", ");
-        
-        messageText += `${idx + 1}. ${task.title} - ${mentions || "Belum ada pelaksana"}\n`;
-
-        executorNames.forEach(n => {
-          const chatId = userChatIdMap.get(n);
-          if (chatId) {
-            if (!userDMs.has(chatId)) userDMs.set(chatId, []);
-            userDMs.get(chatId)!.push(`📋 Project Task: <b>${task.title}</b> (Overdue, Project: ${task.project?.name || '-'})`);
-          }
-        });
-      });
-      hasContent = true;
-    }
-
-    messageText += `\nMohon segera ditindaklanjuti. Terima kasih! 🙏`;
-
-    if (hasContent) {
-      // Send group broadcast
-      await sendTelegramMessage(messageText);
-
-      // Send individual DMs
-      for (const [chatId, messages] of userDMs.entries()) {
-        const dmText = `🚨 <b>PEMBERITAHUAN TUGAS OVERDUE</b> 🚨\n\nHalo, Anda memiliki tugas/tiket yang telah melewati batas waktu dan belum selesai:\n\n` 
-          + messages.map((m, i) => `${i + 1}. ${m}`).join("\n") 
-          + `\n\nMohon segera ditindaklanjuti. Terima kasih! 🙏`;
-        
-        await sendTelegramMessage(dmText, undefined, chatId);
       }
     }
+    const legacyUsers = legacyNames.size
+      ? await prisma.user.findMany({
+          where: { name: { in: Array.from(legacyNames) } },
+          select: { id: true, name: true, telegramUsername: true, telegramChatId: true },
+        })
+      : [];
+    const legacyByName = new Map(legacyUsers.map((u) => [u.name, u]));
 
-    return NextResponse.json({ success: true, counts: { support: overdueSupport.length, tasks: overdueTasks.length, dmsSent: userDMs.size } });
-  } catch (error: any) {
+    let messageText =
+      `⏰ <b>PENGINGAT TASK & SLA MENDEKATI / OVERDUE</b>\n` +
+      `Hanya item yang mendekati batas waktu atau sudah overdue dan belum selesai:\n\n`;
+
+    const userDMs = new Map<string, string[]>();
+
+    if (supportAlerts.length > 0) {
+      messageText += `🔧 <b>SUPPORT REQUESTS (${supportAlerts.length}):</b>\n`;
+      supportAlerts.forEach(({ ticket, state }, idx) => {
+        const dueDate = ticket.slaDueAt ? new Date(ticket.slaDueAt) : new Date(ticket.startDate);
+        const badge = formatDueBadge(state, dueDate, now);
+        const stateTag = state === "OVERDUE" ? "🚨" : "⚠️";
+        const mentions =
+          ticket.executors
+            .map((e) => (e.telegramUsername ? `@${e.telegramUsername.replace(/^@+/, "")}` : e.name))
+            .join(", ") || "Belum ada pelaksana";
+        const code = ticket.ticketNumber ? `[${ticket.ticketNumber}] ` : "";
+        messageText += `${idx + 1}. ${stateTag} ${code}${ticket.taskName} (${badge}) — ${mentions}\n`;
+
+        for (const e of ticket.executors) {
+          if (e.telegramChatId) {
+            if (!userDMs.has(e.telegramChatId)) userDMs.set(e.telegramChatId, []);
+            userDMs
+              .get(e.telegramChatId)!
+              .push(`${stateTag} Support ${code}<b>${ticket.taskName}</b> (${badge})`);
+          }
+        }
+      });
+      messageText += `\n`;
+    }
+
+    if (taskAlerts.length > 0) {
+      messageText += `📋 <b>PROJECT TASKS (${taskAlerts.length}):</b>\n`;
+      taskAlerts.forEach(({ task, state }, idx) => {
+        const badge = formatDueBadge(state, new Date(task.endDate), now);
+        const stateTag = state === "OVERDUE" ? "🚨" : "⚠️";
+        const resolvedUsers =
+          task.executors.length > 0
+            ? task.executors.map((e) => e.user)
+            : (task.executor || "")
+                .split(",")
+                .map((n) => legacyByName.get(n.trim()))
+                .filter((u): u is NonNullable<typeof u> => Boolean(u));
+
+        const mentions =
+          resolvedUsers
+            .map((u) => (u.telegramUsername ? `@${u.telegramUsername.replace(/^@+/, "")}` : u.name))
+            .join(", ") ||
+          task.executor ||
+          "Belum ada pelaksana";
+
+        const projPrefix = task.project?.name ? `[${task.project.name}] ` : "";
+        messageText += `${idx + 1}. ${stateTag} ${projPrefix}${task.title} (${badge}) — ${mentions}\n`;
+
+        for (const u of resolvedUsers) {
+          if (u.telegramChatId) {
+            if (!userDMs.has(u.telegramChatId)) userDMs.set(u.telegramChatId, []);
+            userDMs
+              .get(u.telegramChatId)!
+              .push(`${stateTag} Task ${projPrefix}<b>${task.title}</b> (${badge})`);
+          }
+        }
+      });
+      messageText += `\n`;
+    }
+
+    messageText += `<i>Pengingat ini berhenti otomatis setelah status tugas/tiket selesai.</i>`;
+
+    await sendTelegramMessage(messageText);
+
+    for (const [chatId, messages] of userDMs.entries()) {
+      const dmText =
+        `⏰ <b>PENGINGAT DEADLINE TUGAS & SLA</b>\n\n` +
+        `Berikut tugas/tiket Anda yang mendekati overdue atau sudah overdue:\n\n` +
+        messages.map((m, i) => `${i + 1}. ${m}`).join("\n") +
+        `\n\nMohon segera diselesaikan agar pengingat berhenti otomatis. 🙏`;
+
+      await sendTelegramMessage(dmText, undefined, chatId);
+    }
+
+    return NextResponse.json({
+      success: true,
+      counts: {
+        support: supportAlerts.length,
+        tasks: taskAlerts.length,
+        dmsSent: userDMs.size,
+      },
+    });
+  } catch (error: unknown) {
     console.error("Cron failed:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Cron execution failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

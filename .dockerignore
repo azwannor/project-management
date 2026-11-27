@@ -1,0 +1,14 @@
+.git
+.gitignore
+node_modules
+.next
+.uploads
+.env
+.env.*
+!.env.example
+design
+docs
+coverage
+*.tsbuildinfo
+*.log
+npm-debug.log*

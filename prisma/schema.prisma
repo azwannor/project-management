@@ -8,177 +8,30 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  photo     String?
-  jobDesk   String
-  role      String   // "Admin" | "Staff"
-  telegramUsername String? // Untuk integrasi webhook telegram
-  telegramChatId   String? // Untuk pengiriman DM Telegram
-  handledAreas String[] // Untuk auto-assign Master Data
-  canViewTeamLogs Boolean @default(false) // Untuk akses Team Logs bagi non-Admin
-  tasks     Task[]
-  timeLogs  TimeLog[]
-  supportTickets SupportTicket[] @relation("SupportCreator")
-  assignedSupportTickets SupportTicket[] @relation("SupportExecutors")
-  assignedSchedules      MaintenanceSchedule[] @relation("ScheduleExecutors")
-  maintenanceLogs        MaintenanceLog[]
-  picAssets              Asset[]
-  comments       Comment[]
-  commentReadStatuses CommentReadStatus[]
-  notifications  Notification[]
-  createdAt DateTime @default(now())
-  lastActiveAt DateTime @default(now())
-}
-
-model Project {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  objective   String?
-  members     String?
-  startDate   DateTime
-  endDate     DateTime
-  status      String   // "Not Started" | "Ongoing" | "Completed"
-  tasks       Task[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model Task {
-  id          String   @id @default(uuid())
-  parentId    String?  // Untuk hierarki task
-  projectId   String?
-  userId      String
-  title       String
-  startDate   DateTime
-  endDate     DateTime
-  actualEndDate DateTime?
-  priority    String   // "Butuh Cepat" | "Normal"
-  issue         String?  // Kendala
-  solution      String?  // Solusi
-  documentation String?  // Link GDrive/OneDrive
-  executor      String?  // Penanggung jawab task
-  status        String   // "Not Started" | "Ongoing" | "Completed"
-  attachment    String?
-  
-  project     Project? @relation(fields: [projectId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
-  parentTask  Task?    @relation("TaskHierarchy", fields: [parentId], references: [id])
-  subTasks    Task[]   @relation("TaskHierarchy")
-  timeLogs    TimeLog[]
-  comments    Comment[]
-  commentReadStatuses CommentReadStatus[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model TimeLog {
-  id          String   @id @default(uuid())
-  taskId      String
-  userId      String
-  startTime   DateTime
-  endTime     DateTime?
-  duration    Int?     // Total durasi dalam detik
-
-  task        Task     @relation(fields: [taskId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
-
-  createdAt   DateTime @default(now())
-}
-
-model SupportTicket {
-  id            String   @id @default(uuid())
-  userId        String
-  taskName      String
-  supportType   String
-  module        String
-  area          String?  // Untuk tiket kategori Master Data
-  startDate     DateTime
-  endDate       DateTime?
-  issue         String?
-  solution      String?
-  status        String
-  priority      String   @default("Normal")
-  attachment    String?
-
-  // Penambahan Field Baru
-  ticketType    String   @default("DAILY_ACTIVITY") // "REQUEST" atau "DAILY_ACTIVITY"
-  requesterName String?  // Nama Pelapor (untuk REQUEST)
-  executors     User[]   @relation("SupportExecutors")
-  link          String?
-
-  user          User     @relation("SupportCreator", fields: [userId], references: [id])
-  comments      Comment[]
-  commentReadStatuses CommentReadStatus[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-model Comment {
-  id              String   @id @default(uuid())
-  content         String
-  attachment      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  taskId          String?
-  task            Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  supportTicketId String?
-  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
-
-  replyToId       String?
-  replyTo         Comment?  @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies         Comment[] @relation("CommentReplies")
-}
-
-model CommentReadStatus {
-  id              String   @id @default(uuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  taskId          String?
-  task            Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  
-  supportTicketId String?
-  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
-  
-  lastReadAt      DateTime @default(now())
-
-  @@unique([userId, taskId])
-  @@unique([userId, supportTicketId])
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  message   String
-  type      String   // "ASSIGNMENT", "DEADLINE", "SYSTEM", etc.
-  isRead    Boolean  @default(false)
-  link      String?  
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 // ==========================================
-// Maintenance Rutin Infrastruktur IT Module
+// Core Enums (v2 Domain)
 // ==========================================
+
+enum TimeLogSource {
+  AUTO
+  MANUAL
+  ADJUSTED
+}
+
+enum TicketSource {
+  MANUAL
+  EXTERNAL_APP
+  QR_SCAN
+  MAINTENANCE
+}
 
 enum AssetStatus {
   ACTIVE
   IN_REPAIR
+  SPARE
   INACTIVE
   RETIRED
+  LOST
 }
 
 enum ScheduleType {
@@ -199,109 +52,485 @@ enum OverallCondition {
   BERMASALAH
 }
 
-model AssetType {
+// ==========================================
+// 1. Auth, Users & Permissions
+// ==========================================
+
+model User {
+  id                     String   @id @default(uuid())
+  name                   String
+  email                  String   @unique
+  password               String
+  photo                  String?
+  jobDesk                String
+  role                   String   // "Admin" | "Staff"
+  telegramUsername       String?
+  telegramChatId         String?
+  handledAreas           String[]
+  canViewTeamLogs        Boolean  @default(false)
+  canManageMaintenance   Boolean  @default(false)
+  preferredLocale        String   @default("en")
+  preferredTheme         String   @default("light")
+  isActive               Boolean  @default(true)
+
+  tasks                  Task[]
+  taskAssignments        TaskExecutor[]
+  projectMemberships     ProjectMember[]
+  timeLogs               TimeLog[]
+  supportTickets         SupportTicket[]       @relation("SupportCreator")
+  assignedSupportTickets SupportTicket[]       @relation("SupportExecutors")
+  assignedSchedules      MaintenanceSchedule[] @relation("ScheduleExecutors")
+  maintenanceLogs        MaintenanceLog[]
+  picAssets              Asset[]
+  custodyChanges         AssetCustodyLog[]
+  comments               Comment[]
+  commentReadStatuses    CommentReadStatus[]
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now()) @updatedAt
+  lastActiveAt           DateTime @default(now())
+}
+
+// ==========================================
+// 2. Project Management & Hybrid Time Tracking
+// ==========================================
+
+model Project {
+  id             String          @id @default(uuid())
+  name           String
+  description    String?
+  objective      String?
+  members        String?         // Legacy comma-separated names retained during phased transition
+  startDate      DateTime
+  endDate        DateTime
+  actualEndDate  DateTime?
+  status         String          // "Not Started" | "Ongoing" | "On Hold" | "Completed"
+
+  projectMembers ProjectMember[]
+  tasks          Task[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+}
+
+model Task {
+  id                  String              @id @default(uuid())
+  parentId            String?
+  projectId           String?
+  userId              String
+  sourceTicketId      String?
+  title               String
+  startDate           DateTime
+  endDate             DateTime
+  startedAt           DateTime?
+  actualEndDate       DateTime?
+  priority            String              // "Butuh Cepat" | "Urgent" | "High" | "Normal" | "Low"
+  issue               String?
+  solution            String?
+  documentation       String?
+  executor            String?             // Legacy comma-separated names retained during phased transition
+  status              String              // "Not Started" | "Ongoing" | "Completed"
+  attachment          String?
+  attachmentKey       String?
+  sortOrder           Int                 @default(0)
+
+  project             Project?            @relation(fields: [projectId], references: [id])
+  user                User                @relation(fields: [userId], references: [id])
+  sourceTicket        SupportTicket?      @relation("PromotedTickets", fields: [sourceTicketId], references: [id], onDelete: SetNull)
+  parentTask          Task?               @relation("TaskHierarchy", fields: [parentId], references: [id])
+  subTasks            Task[]              @relation("TaskHierarchy")
+  executors           TaskExecutor[]
+  timeLogs            TimeLog[]
+  comments            Comment[]
+  commentReadStatuses CommentReadStatus[]
+
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([projectId, status])
+  @@index([parentId])
+  @@index([endDate, status])
+}
+
+model TaskExecutor {
+  taskId String
+  userId String
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+model TimeLog {
+  id              String         @id @default(uuid())
+  taskId          String?
+  supportTicketId String?
+  userId          String
+  startTime       DateTime
+  endTime         DateTime?
+  duration        Int?           // Legacy total duration in seconds
+  durationSeconds Int?
+  source          TimeLogSource  @default(AUTO)
+  note            String?
+
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id])
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @default(now()) @updatedAt
+
+  @@index([taskId, endTime])
+  @@index([supportTicketId, endTime])
+  @@index([userId, startTime])
+}
+
+// ==========================================
+// 3. Support & Operational Logs
+// ==========================================
+
+model SupportTicket {
+  id                  String              @id @default(uuid())
+  ticketNumber        String?             @unique
+  userId              String
+  taskName            String
+  supportType         String
+  module              String
+  area                String?
+  startDate           DateTime
+  startedAt           DateTime?
+  endDate             DateTime?
+  slaTargetMinutes    Int?
+  slaDueAt            DateTime?
+  issue               String?
+  solution            String?
+  status              String              // "Not Started" | "Ongoing" | "Suspended" | "Done"
+  priority            String              @default("Normal")
+  attachment          String?
+  attachmentKey       String?
+
+  ticketType          String              @default("DAILY_ACTIVITY") // "REQUEST" | "DAILY_ACTIVITY"
+  requesterName       String?
+  requesterEmail      String?
+  sourceType          TicketSource        @default(MANUAL)
+  sourceApp           String?
+  sourceMenu          String?
+  sourceUrl           String?
+  sourceMetadata      Json?
+  assetId             String?
+
+  asset               Asset?              @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  executors           User[]              @relation("SupportExecutors")
+  link                String?
+  user                User                @relation("SupportCreator", fields: [userId], references: [id])
+  promotedTasks       Task[]              @relation("PromotedTickets")
+  timeLogs            TimeLog[]
+  maintenanceLog      MaintenanceLog?     @relation("FollowUpTicket")
+  comments            Comment[]
+  commentReadStatuses CommentReadStatus[]
+
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([ticketType, status, startDate])
+  @@index([slaDueAt, status])
+  @@index([assetId])
+  @@index([createdAt])
+}
+
+model Comment {
+  id              String         @id @default(uuid())
+  content         String
+  attachment      String?
+  attachmentKey   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taskId          String?
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  supportTicketId String?
+  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
+
+  replyToId       String?
+  replyTo         Comment?       @relation("CommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         Comment[]      @relation("CommentReplies")
+}
+
+model CommentReadStatus {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taskId          String?
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  supportTicketId String?
+  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
+
+  lastReadAt      DateTime       @default(now())
+
+  @@unique([userId, taskId])
+  @@unique([userId, supportTicketId])
+}
+
+model Notification {
   id        String   @id @default(uuid())
-  name      String   @unique
+  userId    String
+  title     String
+  message   String
+  type      String   // "ASSIGNMENT" | "DEADLINE" | "SLA_BREACH" | "MAINTENANCE" | "SYSTEM"
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+// ==========================================
+// 4. Enterprise Assets, QR & Maintenance
+// ==========================================
+
+model AssetType {
+  id        String                @id @default(uuid())
+  name      String                @unique
+  code      String?
   assets    Asset[]
   templates MaintenanceTemplate[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 }
 
 model Division {
   id        String   @id @default(uuid())
   name      String   @unique
+  code      String?
+  assets    Asset[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String?
+  address   String?
   assets    Asset[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Asset {
-  id              String       @id @default(uuid())
-  assetCode       String       @unique
-  assetName       String
-  assetTypeId     String
-  assetType       AssetType    @relation(fields: [assetTypeId], references: [id])
-  divisionId      String?
-  division        Division?    @relation(fields: [divisionId], references: [id])
-  brand           String?
-  model           String?
-  serialNumber    String?
-  person          String?
-  location        String?
+  id               String                @id @default(uuid())
+  assetCode        String                @unique
+  assetName        String
+  assetTypeId      String
+  assetType        AssetType             @relation(fields: [assetTypeId], references: [id])
+  divisionId       String?
+  division         Division?             @relation(fields: [divisionId], references: [id])
+  locationId       String?
+  locationRef      Location?             @relation(fields: [locationId], references: [id])
+  brand            String?
+  model            String?
+  serialNumber     String?
+  specs            Json?
+  person           String?               // Legacy holder name retained for backward compatibility
+  assignedPerson   String?
+  location         String?               // Legacy location text retained for backward compatibility
   detailedLocation String?
-  status          AssetStatus  @default(ACTIVE)
-  purchaseDate    DateTime?
-  warrantyEndDate DateTime?
-  picUserId       String?
-  pic             User?        @relation(fields: [picUserId], references: [id])
-  notes           String?
-  schedules       MaintenanceSchedule[]
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  status           AssetStatus           @default(ACTIVE)
+  purchaseDate     DateTime?
+  purchasePrice    Decimal?              @db.Decimal(15, 2)
+  vendor           String?
+  warrantyEndDate  DateTime?
+  photoKey         String?
+  qrPrintedAt      DateTime?
+  picUserId        String?
+  pic              User?                 @relation(fields: [picUserId], references: [id])
+  notes            String?
+
+  schedules        MaintenanceSchedule[]
+  custodyLogs      AssetCustodyLog[]
+  supportTickets   SupportTicket[]
+
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([divisionId, locationId, status])
+  @@index([warrantyEndDate])
+}
+
+model AssetCustodyLog {
+  id               String   @id @default(uuid())
+  assetId          String
+  asset            Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  previousPerson   String?
+  newPerson        String?
+  previousLocation String?
+  newLocation      String?
+  previousDivision String?
+  newDivision      String?
+  changedById      String?
+  changedBy        User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  note             String?
+  changedAt        DateTime @default(now())
+
+  @@index([assetId, changedAt])
 }
 
 model MaintenanceTemplate {
-  id                   String    @id @default(uuid())
+  id                   String                @id @default(uuid())
   templateName         String
   assetTypeId          String
-  assetType            AssetType @relation(fields: [assetTypeId], references: [id])
+  assetType            AssetType             @relation(fields: [assetTypeId], references: [id])
   defaultFrequencyDays Int
-  reminderOffsetDays   Int       // Default otomatis berdasarkan defaultFrequencyDays, bisa di-override Admin
+  reminderOffsetDays   Int
   checklistItems       ChecklistItemMaster[]
   schedules            MaintenanceSchedule[]
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 }
 
 model ChecklistItemMaster {
-  id          String              @id @default(uuid())
-  templateId  String
-  template    MaintenanceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  itemText    String
-  order       Int
-  isRequired  Boolean             @default(true)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id         String              @id @default(uuid())
+  templateId String
+  template   MaintenanceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  itemText   String
+  order      Int
+  isRequired Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 }
 
 model MaintenanceSchedule {
-  id                String         @id @default(uuid())
+  id                String               @id @default(uuid())
   scheduleType      ScheduleType
   assetId           String
-  asset             Asset          @relation(fields: [assetId], references: [id])
+  asset             Asset                @relation(fields: [assetId], references: [id])
   templateId        String?
   template          MaintenanceTemplate? @relation(fields: [templateId], references: [id])
   frequencyDays     Int?
   nextDueDate       DateTime
-  status            ScheduleStatus @default(UPCOMING)
-  assignedExecutors User[]         @relation("ScheduleExecutors") // Pattern sama dengan SupportTicket.executors
+  status            ScheduleStatus       @default(UPCOMING)
+  lastRemindedAt    DateTime?
+  assignedExecutors User[]               @relation("ScheduleExecutors")
   logs              MaintenanceLog[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([status, nextDueDate])
+  @@index([assetId])
 }
 
 model MaintenanceLog {
-  id                String           @id @default(uuid())
-  scheduleId        String
-  schedule          MaintenanceSchedule @relation(fields: [scheduleId], references: [id])
-  executedById      String
-  executedBy        User             @relation(fields: [executedById], references: [id])
-  executionDate     DateTime         @default(now())
-  checklistResults  ChecklistResult[]
-  overallCondition  OverallCondition
-  findings          String?
-  followUpNeeded    Boolean          @default(false)
-  supportTicketId   String?          // Relasi opsional ke SupportTicket (String saja, FK di Fase 3)
-  attachment        String?
-  createdAt         DateTime         @default(now())
+  id               String              @id @default(uuid())
+  scheduleId       String
+  schedule         MaintenanceSchedule @relation(fields: [scheduleId], references: [id])
+  executedById     String
+  executedBy       User                @relation(fields: [executedById], references: [id])
+  executionDate    DateTime            @default(now())
+  checklistResults ChecklistResult[]
+  overallCondition OverallCondition
+  findings         String?
+  followUpNeeded   Boolean             @default(false)
+  supportTicketId  String?             @unique
+  supportTicket    SupportTicket?      @relation("FollowUpTicket", fields: [supportTicketId], references: [id], onDelete: SetNull)
+  attachment       String?
+  attachmentKey    String?
+  createdAt        DateTime            @default(now())
 }
 
 model ChecklistResult {
-  id           String         @id @default(uuid())
-  logId        String
-  log          MaintenanceLog @relation(fields: [logId], references: [id], onDelete: Cascade)
-  itemText     String         // Snapshot dari checklist master saat eksekusi (agar histori tidak berubah jika template diedit)
-  checked      Boolean        @default(false)
-  note         String?
+  id       String         @id @default(uuid())
+  logId    String
+  log      MaintenanceLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  itemText String
+  checked  Boolean        @default(false)
+  note     String?
+}
+
+// ==========================================
+// 5. Master Data, Integrations & Governance
+// ==========================================
+
+model SupportModule {
+  id         String            @id @default(uuid())
+  groupName  String
+  name       String            @unique
+  isActive   Boolean           @default(true)
+  sortOrder  Int               @default(0)
+  categories SupportCategory[]
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model SupportCategory {
+  id           String        @id @default(uuid())
+  moduleId     String
+  module       SupportModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  name         String
+  requiresArea Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([moduleId, name])
+}
+
+model RegionalArea {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SlaPolicy {
+  id                       String   @id @default(uuid())
+  priority                 String   @unique // "Urgent" | "High" | "Normal" | "Low"
+  firstResponseMinutes     Int      @default(30)
+  targetMinutes            Int
+  reminderThresholdPercent Int      @default(75)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
+model ExternalApiKey {
+  id         String    @id @default(uuid())
+  name       String
+  sourceApp  String
+  keyPrefix  String
+  keyHash    String    @unique
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  entityType String
+  entityId   String
+  action     String
+  diffJson   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
 }

@@ -1,43 +1,36 @@
-import { isMaintenanceAdmin } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { isMaintenanceAdmin } from "@/lib/auth";
 
 // GET /api/maintenance-templates — List templates (Admin only)
 export async function GET(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isMaintenanceAdmin(auth.user)) {
+    return NextResponse.json(
+      { error: "Forbidden. Only admins can manage templates." },
+      { status: 403 }
+    );
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Forbidden. Only admins can manage templates." }, { status: 403 });
-    }
-
     const { searchParams } = new URL(req.url);
     const assetTypeId = searchParams.get("assetTypeId");
 
-    const where: any = {};
-    if (assetTypeId) {
-      where.assetTypeId = assetTypeId;
-    }
+    const where: Prisma.MaintenanceTemplateWhereInput = {};
+    if (assetTypeId) where.assetTypeId = assetTypeId;
 
     const templates = await prisma.maintenanceTemplate.findMany({
       where,
       orderBy: { createdAt: "desc" },
       include: {
         assetType: { select: { id: true, name: true } },
-        checklistItems: {
-          orderBy: { order: "asc" },
-        },
-        _count: {
-          select: { schedules: true },
-        },
+        checklistItems: { orderBy: { order: "asc" } },
+        _count: { select: { schedules: true } },
       },
     });
 
@@ -50,68 +43,90 @@ export async function GET(req: Request) {
 
 // POST /api/maintenance-templates — Create template + checklist items (Admin only)
 export async function POST(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isMaintenanceAdmin(auth.user)) {
+    return NextResponse.json(
+      { error: "Forbidden. Only admins can create templates." },
+      { status: 403 }
+    );
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Forbidden. Only admins can create templates." }, { status: 403 });
-    }
-
     const body = await req.json();
-    const { templateName, assetTypeId, defaultFrequencyDays, reminderOffsetDays, checklistItems } = body;
+    const { templateName, assetTypeId, defaultFrequencyDays, reminderOffsetDays, checklistItems } =
+      body;
 
-    // Validasi field wajib
-    if (!templateName || !templateName.trim()) {
+    if (!templateName || typeof templateName !== "string" || !templateName.trim()) {
       return NextResponse.json({ error: "Template name is required" }, { status: 400 });
     }
-    if (!assetTypeId) {
+    if (!assetTypeId || typeof assetTypeId !== "string") {
       return NextResponse.json({ error: "Asset type is required" }, { status: 400 });
     }
-    if (!defaultFrequencyDays || defaultFrequencyDays < 1) {
-      return NextResponse.json({ error: "Default frequency days must be at least 1" }, { status: 400 });
+
+    const parsedFreq = Number(defaultFrequencyDays);
+    if (!Number.isInteger(parsedFreq) || parsedFreq < 1 || parsedFreq > 730) {
+      return NextResponse.json(
+        { error: "defaultFrequencyDays must be an integer between 1 and 730" },
+        { status: 400 }
+      );
     }
 
-    // Validasi AssetType exists
-    const assetTypeExists = await prisma.assetType.findUnique({ where: { id: assetTypeId } });
+    let finalReminderOffset: number;
+    if (
+      reminderOffsetDays !== undefined &&
+      reminderOffsetDays !== null &&
+      reminderOffsetDays !== ""
+    ) {
+      const parsedOffset = Number(reminderOffsetDays);
+      if (!Number.isInteger(parsedOffset) || parsedOffset < 0 || parsedOffset > 90) {
+        return NextResponse.json(
+          { error: "reminderOffsetDays must be an integer between 0 and 90" },
+          { status: 400 }
+        );
+      }
+      finalReminderOffset = parsedOffset;
+    } else {
+      finalReminderOffset = parsedFreq <= 14 ? 1 : parsedFreq <= 60 ? 3 : 7;
+    }
+
+    const assetTypeExists = await prisma.assetType.findUnique({
+      where: { id: assetTypeId.trim() },
+      select: { id: true },
+    });
     if (!assetTypeExists) {
       return NextResponse.json({ error: "Asset type not found" }, { status: 400 });
     }
 
-    // Auto-calculate reminderOffsetDays jika tidak disediakan
-    let finalReminderOffset = reminderOffsetDays;
-    if (!finalReminderOffset) {
-      if (defaultFrequencyDays <= 14) finalReminderOffset = 1;
-      else if (defaultFrequencyDays <= 60) finalReminderOffset = 3;
-      else finalReminderOffset = 7;
-    }
+    const cleanChecklist = Array.isArray(checklistItems)
+      ? checklistItems.filter(
+          (item: unknown): item is { itemText: string; order?: number; isRequired?: boolean } =>
+            Boolean(item && typeof (item as { itemText?: string }).itemText === "string" && (item as { itemText: string }).itemText.trim())
+        )
+      : [];
 
     const template = await prisma.maintenanceTemplate.create({
       data: {
         templateName: templateName.trim(),
-        assetTypeId,
-        defaultFrequencyDays,
+        assetTypeId: assetTypeExists.id,
+        defaultFrequencyDays: parsedFreq,
         reminderOffsetDays: finalReminderOffset,
-        checklistItems: checklistItems && checklistItems.length > 0
-          ? {
-              create: checklistItems.map((item: any, index: number) => ({
-                itemText: item.itemText,
-                order: item.order ?? index + 1,
-                isRequired: item.isRequired ?? true,
-              })),
-            }
-          : undefined,
+        checklistItems:
+          cleanChecklist.length > 0
+            ? {
+                create: cleanChecklist.map((item, index) => ({
+                  itemText: item.itemText.trim(),
+                  order: item.order ?? index + 1,
+                  isRequired: item.isRequired ?? true,
+                })),
+              }
+            : undefined,
       },
       include: {
         assetType: { select: { id: true, name: true } },
-        checklistItems: {
-          orderBy: { order: "asc" },
-        },
+        checklistItems: { orderBy: { order: "asc" } },
       },
     });
 

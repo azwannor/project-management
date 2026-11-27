@@ -1,118 +1,248 @@
 import { NextResponse } from "next/server";
+import { TicketSource } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { openAutoTimeLogForTicket } from "@/lib/timelog";
+import { fetchTicketTimeLogs, validateSupportRefs } from "@/lib/support-validation";
+import {
+  computeSlaDueAt,
+  formatNextTicketNumber,
+  normalizeSupportPriority,
+  resolveSlaPolicy,
+} from "@/lib/support-helpers";
+
+const VALID_SOURCES = new Set<TicketSource>(["MANUAL", "EXTERNAL_APP", "QR_SCAN", "MAINTENANCE"]);
 
 export async function GET() {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const tickets = await prisma.supportTicket.findMany({
       include: {
-        user: { select: { name: true, jobDesk: true } },
-        executors: { select: { id: true, name: true } }
+        user: { select: { id: true, name: true, jobDesk: true, photo: true } },
+        executors: { select: { id: true, name: true, jobDesk: true, photo: true } },
+        asset: { select: { id: true, assetCode: true, assetName: true, location: true } },
+        timeLogs: {
+          include: { user: { select: { id: true, name: true, photo: true } } },
+          orderBy: { startTime: "desc" },
+        },
+        promotedTasks: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            project: { select: { id: true, name: true } },
+          },
+        },
+        comments: {
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        commentReadStatuses: {
+          where: { userId: auth.user.id },
+        },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json(tickets);
   } catch (error) {
-    console.error(error);
+    console.error("Failed to fetch tickets:", error);
     return NextResponse.json({ error: "Failed to fetch tickets" }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
-  try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const body = await req.json();
+    const taskName = typeof body.taskName === "string" ? body.taskName.trim() : "";
+    if (!taskName) {
+      return NextResponse.json({ error: "Ticket title is required" }, { status: 400 });
     }
 
-    const body = await req.json();
-    const { taskName, supportType, module, startDate, endDate, issue, solution, status, attachment, priority, ticketType, requesterName, executorIds, link, area } = body;
+    const supportType =
+      typeof body.supportType === "string" && body.supportType.trim()
+        ? body.supportType.trim()
+        : "Lainnya...";
+    const ticketModule =
+      typeof body.module === "string" && body.module.trim()
+        ? body.module.trim()
+        : "General IT / Lainnya...";
+    const ticketType = body.ticketType === "REQUEST" ? "REQUEST" : "DAILY_ACTIVITY";
+    const status =
+      typeof body.status === "string" && body.status.trim()
+        ? body.status.trim()
+        : ticketType === "REQUEST"
+          ? "Not Started"
+          : "Ongoing";
+    const priority = normalizeSupportPriority(body.priority);
 
-    let finalExecutorIds = executorIds || [];
-    
-    if (ticketType === "REQUEST" && supportType === "Master Data" && area) {
-       const areaExecutors = await prisma.user.findMany({
-          where: {
-             handledAreas: {
-                has: area
-             }
-          },
-          select: { id: true }
-       });
-       if (areaExecutors.length > 0) {
-         finalExecutorIds = areaExecutors.map(u => u.id);
-       }
+    const now = new Date();
+    const startDate = body.startDate ? new Date(body.startDate) : now;
+    if (Number.isNaN(startDate.getTime())) {
+      return NextResponse.json({ error: "Invalid startDate" }, { status: 400 });
+    }
+
+    const endDate =
+      ticketType === "REQUEST"
+        ? status === "Done"
+          ? now
+          : null
+        : body.endDate
+          ? new Date(body.endDate)
+          : status === "Done"
+            ? now
+            : null;
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      return NextResponse.json({ error: "Invalid endDate" }, { status: 400 });
+    }
+
+    const area = typeof body.area === "string" && body.area.trim() ? body.area.trim() : null;
+    const explicitExecutorIds: string[] = Array.isArray(body.executorIds)
+      ? body.executorIds.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0)
+      : [];
+
+    // Check DB SupportCategory requiresArea or legacy "Master Data" auto-assignment
+    let finalExecutorIds = explicitExecutorIds;
+    if (ticketType === "REQUEST" && area && finalExecutorIds.length === 0) {
+      const cat = await prisma.supportCategory.findFirst({
+        where: { name: supportType, module: { name: ticketModule } },
+        select: { requiresArea: true },
+      });
+      if (cat?.requiresArea || supportType === "Master Data") {
+        const areaExecutors = await prisma.user.findMany({
+          where: { isActive: true, handledAreas: { has: area } },
+          select: { id: true },
+        });
+        if (areaExecutors.length > 0) {
+          finalExecutorIds = areaExecutors.map((u) => u.id);
+        }
+      }
+    }
+
+    // Generate next sequential ticketNumber SUP-YYYY-XXXX & resolve SLA policy
+    const currentYear = now.getFullYear();
+    const yearPrefix = `SUP-${currentYear}-`;
+    const [latestTicket, slaPolicies] = await Promise.all([
+      prisma.supportTicket.findFirst({
+        where: { ticketNumber: { startsWith: yearPrefix } },
+        orderBy: { ticketNumber: "desc" },
+        select: { ticketNumber: true },
+      }),
+      prisma.slaPolicy.findMany({
+        select: {
+          priority: true,
+          firstResponseMinutes: true,
+          targetMinutes: true,
+          reminderThresholdPercent: true,
+        },
+      }),
+    ]);
+
+    const ticketNumber = formatNextTicketNumber(latestTicket?.ticketNumber, currentYear);
+    const matchedPolicy = ticketType === "REQUEST" ? resolveSlaPolicy(priority, slaPolicies) : null;
+    const slaTargetMinutes = matchedPolicy?.targetMinutes ?? null;
+    const slaDueAt = matchedPolicy ? computeSlaDueAt(startDate, slaTargetMinutes) : null;
+
+    const rawSource = typeof body.sourceType === "string" ? body.sourceType.toUpperCase() : "MANUAL";
+    const sourceType: TicketSource = VALID_SOURCES.has(rawSource as TicketSource)
+      ? (rawSource as TicketSource)
+      : TicketSource.MANUAL;
+
+    const assetId =
+      typeof body.assetId === "string" && body.assetId.trim() ? body.assetId.trim() : null;
+
+    const validation = await validateSupportRefs({
+      assetId,
+      executorIds: finalExecutorIds,
+    });
+    if (validation.error) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
     const ticket = await prisma.supportTicket.create({
       data: {
-        userId: session.userId as string,
+        ticketNumber,
+        userId: auth.user.id,
         taskName,
         supportType,
-        module,
-        startDate: new Date(startDate),
-        endDate: ticketType === "REQUEST" ? null : (endDate ? new Date(endDate) : null),
-        issue: issue || null,
-        solution: solution || null,
-        status: status || "Ongoing",
-        priority: priority || "Normal",
-        attachment: attachment || null,
-        link: link || null,
-        ticketType: ticketType || "DAILY_ACTIVITY",
-        requesterName: requesterName || null,
-        area: area || null,
-        executors: finalExecutorIds && finalExecutorIds.length > 0 ? { connect: finalExecutorIds.map((id: string) => ({ id })) } : undefined
+        module: ticketModule,
+        area,
+        startDate,
+        startedAt: status === "Ongoing" ? now : null,
+        endDate,
+        slaTargetMinutes,
+        slaDueAt,
+        issue: typeof body.issue === "string" ? body.issue.trim() || null : null,
+        solution: typeof body.solution === "string" ? body.solution.trim() || null : null,
+        status,
+        priority,
+        attachment: typeof body.attachment === "string" ? body.attachment.trim() || null : null,
+        attachmentKey:
+          typeof body.attachmentKey === "string" ? body.attachmentKey.trim() || null : null,
+        link: typeof body.link === "string" ? body.link.trim() || null : null,
+        ticketType,
+        requesterName:
+          typeof body.requesterName === "string" ? body.requesterName.trim() || null : null,
+        requesterEmail:
+          typeof body.requesterEmail === "string" ? body.requesterEmail.trim() || null : null,
+        sourceType,
+        sourceApp: typeof body.sourceApp === "string" ? body.sourceApp.trim() || null : null,
+        sourceMenu: typeof body.sourceMenu === "string" ? body.sourceMenu.trim() || null : null,
+        sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl.trim() || null : null,
+        assetId,
+        ...(finalExecutorIds.length > 0
+          ? { executors: { connect: finalExecutorIds.map((id) => ({ id })) } }
+          : {}),
       },
       include: {
-        executors: { select: { name: true, telegramUsername: true } }
-      }
+        user: { select: { id: true, name: true, jobDesk: true, photo: true } },
+        executors: {
+          select: { id: true, name: true, jobDesk: true, photo: true, telegramUsername: true },
+        },
+        asset: { select: { id: true, assetCode: true, assetName: true, location: true } },
+        timeLogs: true,
+        promotedTasks: {
+          select: { id: true, title: true, status: true, project: { select: { id: true, name: true } } },
+        },
+        comments: { select: { id: true, createdAt: true }, take: 1 },
+        commentReadStatuses: { where: { userId: auth.user.id } },
+      },
     });
 
-    // Kirim notifikasi Telegram untuk SEMUA tiket baru sesuai permintaan
-    const user = await prisma.user.findUnique({ where: { id: session.userId as string } });
-    const reporter = user?.name || "Unknown";
-    
-    const { formatHtmlForTelegram, sendTelegramMessage } = await import("@/lib/telegram");
-    const cleanIssue = formatHtmlForTelegram(ticket.issue);
-    if (ticket.ticketType === "REQUEST") {
-      const executorTags = ticket.executors.map((e: any) => {
-        if (e.telegramUsername) {
-           return e.telegramUsername.startsWith('@') ? e.telegramUsername : `@${e.telegramUsername}`;
-        }
-        return e.name;
-      }).join(", ") || "Not assigned";
-      const message = `🆘 <b>SUPPORT REQUEST BARU</b> 🆘\n\n<b>Judul:</b> ${ticket.taskName}\n<b>Pelapor:</b> ${ticket.requesterName || reporter}\n<b>Dibuat Oleh:</b> ${reporter}\n<b>Tugas Untuk:</b> ${executorTags}\n<b>Modul:</b> ${ticket.module}\n<b>Kendala:</b>\n${cleanIssue}\n\n<b>Link:</b> ${ticket.link || "-"}\n<b>Prioritas:</b> ${ticket.priority}\n\n<i>Silakan segera ditindaklanjuti!</i>\nCek detailnya di aplikasi IT Tracker.`;
-      
-      const replyMarkup = {
-        inline_keyboard: [
-          [
-            {
-              text: "✅ Tandai Selesai",
-              callback_data: `done_support_${ticket.id}`
-            }
-          ]
-        ]
-      };
-      
-      await sendTelegramMessage(message, replyMarkup);
+    let freshTimeLogs = ticket.timeLogs;
+    if (status === "Ongoing") {
+      await openAutoTimeLogForTicket(ticket.id, auth.user.id, now);
+      freshTimeLogs = await fetchTicketTimeLogs(ticket.id);
     }
 
-    return NextResponse.json(ticket);
+    // In-app assignment notifications + Telegram alert for REQUEST queue tickets
+    if (ticketType === "REQUEST") {
+      if (ticket.executors.length > 0) {
+        await prisma.notification.createMany({
+          data: ticket.executors.map((u) => ({
+            userId: u.id,
+            title: `Support Ticket: ${ticket.ticketNumber || "New"}`,
+            message: `${ticket.taskName} (${ticket.module} · ${ticket.priority})`,
+            type: "ASSIGNMENT",
+            link: `/support?ticket=${ticket.id}`,
+          })),
+        });
+      }
+    }
+
+    return NextResponse.json({ ...ticket, timeLogs: freshTimeLogs }, { status: 201 });
   } catch (error) {
-    console.error(error);
+    console.error("Failed to create ticket:", error);
     return NextResponse.json({ error: "Failed to create ticket" }, { status: 500 });
   }
 }

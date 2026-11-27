@@ -1,37 +1,60 @@
-import { isMaintenanceAdmin } from "@/lib/auth";
+import { OverallCondition, Prisma, TicketSource } from "@prisma/client";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { isMaintenanceAdmin } from "@/lib/auth";
+import {
+  computeSlaDueAt,
+  formatNextTicketNumber,
+  resolveSlaPolicy,
+} from "@/lib/support-helpers";
 
-// POST /api/maintenance-logs — Submit maintenance log (Assigned executors only)
+// POST /api/maintenance-logs — Submit checklist log + auto-recur + optional linked follow-up SupportTicket
 export async function POST(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await req.json();
-    const { scheduleId, checklistResults, overallCondition, findings, followUpNeeded, attachment } = body;
+    const {
+      scheduleId,
+      checklistResults,
+      overallCondition,
+      findings,
+      followUpNeeded,
+      createFollowUpTicket,
+      attachment,
+      attachmentKey,
+    } = body;
 
-    // Validasi field wajib
     if (!scheduleId) {
       return NextResponse.json({ error: "scheduleId is required" }, { status: 400 });
     }
-    if (!overallCondition || !["BAIK", "PERLU_PERHATIAN", "BERMASALAH"].includes(overallCondition)) {
-      return NextResponse.json({ error: "overallCondition harus BAIK, PERLU_PERHATIAN, atau BERMASALAH" }, { status: 400 });
+    if (
+      !overallCondition ||
+      !["BAIK", "PERLU_PERHATIAN", "BERMASALAH"].includes(String(overallCondition))
+    ) {
+      return NextResponse.json(
+        { error: "overallCondition must be BAIK, PERLU_PERHATIAN, or BERMASALAH" },
+        { status: 400 }
+      );
     }
 
-    // Ambil schedule + validasi
     const schedule = await prisma.maintenanceSchedule.findUnique({
-      where: { id: scheduleId },
+      where: { id: String(scheduleId) },
       include: {
         assignedExecutors: { select: { id: true } },
-        asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { name: true } } } },
+        asset: {
+          select: {
+            id: true,
+            assetCode: true,
+            assetName: true,
+            location: true,
+            division: { select: { name: true } },
+          },
+        },
         template: {
           select: {
             id: true,
@@ -46,26 +69,24 @@ export async function POST(req: Request) {
     if (!schedule) {
       return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
     }
-
     if (schedule.status === "DONE") {
-      return NextResponse.json({ error: "Schedule is already DONE. Cannot submit log anymore." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Schedule is already DONE. Cannot submit log anymore." },
+        { status: 400 }
+      );
     }
 
-    // Cek apakah user adalah salah satu assigned executor
-    const isAssigned = schedule.assignedExecutors.some(e => e.id === session.userId);
-    if (!isAssigned && !isMaintenanceAdmin(session)) {
+    const isAssigned = schedule.assignedExecutors.some((e) => e.id === auth.user.id);
+    if (!isAssigned && !isMaintenanceAdmin(auth.user)) {
       return NextResponse.json(
         { error: "You are not assigned as an executor for this maintenance schedule." },
         { status: 403 }
       );
     }
 
-    // Siapkan checklist results sebagai snapshot
-    // Jika checklistResults disediakan dari frontend, gunakan itu
-    // Jika tidak, buat snapshot dari template checklist items
-    let finalChecklistResults = checklistResults || [];
+    let finalChecklistResults = Array.isArray(checklistResults) ? checklistResults : [];
     if (finalChecklistResults.length === 0 && schedule.template?.checklistItems) {
-      finalChecklistResults = schedule.template.checklistItems.map(item => ({
+      finalChecklistResults = schedule.template.checklistItems.map((item) => ({
         itemText: item.itemText,
         checked: false,
         note: null,
@@ -73,48 +94,139 @@ export async function POST(req: Request) {
     }
 
     const executionDate = new Date();
+    const shouldFollowUp = Boolean(followUpNeeded);
+    const shouldCreateTicket = shouldFollowUp && Boolean(createFollowUpTicket);
 
-    // Jalankan semua operasi dalam transaction
+    // Preload SLA policies & latest ticket number cleanly before transaction if follow-up ticket requested
+    let nextTicketNumber: string | null = null;
+    let ticketSlaTargetMinutes: number | null = null;
+    let ticketSlaDueAt: Date | null = null;
+    const ticketPriority = overallCondition === "BERMASALAH" ? "High" : "Normal";
+
+    if (shouldCreateTicket) {
+      const year = executionDate.getFullYear();
+      const yearPrefix = `SUP-${year}-`;
+      const [latestTicket, policies] = await Promise.all([
+        prisma.supportTicket.findFirst({
+          where: { ticketNumber: { startsWith: yearPrefix } },
+          orderBy: { ticketNumber: "desc" },
+          select: { ticketNumber: true },
+        }),
+        prisma.slaPolicy.findMany({
+          select: {
+            priority: true,
+            firstResponseMinutes: true,
+            targetMinutes: true,
+            reminderThresholdPercent: true,
+          },
+        }),
+      ]);
+      nextTicketNumber = formatNextTicketNumber(latestTicket?.ticketNumber, year);
+      const matched = resolveSlaPolicy(ticketPriority, policies);
+      if (matched) {
+        ticketSlaTargetMinutes = matched.targetMinutes;
+        ticketSlaDueAt = computeSlaDueAt(executionDate, matched.targetMinutes);
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Create MaintenanceLog + ChecklistResult (snapshot)
+      let createdTicket: {
+        id: string;
+        ticketNumber: string | null;
+        status: string;
+      } | null = null;
+
+      if (shouldCreateTicket && nextTicketNumber) {
+        const executorConnections = schedule.assignedExecutors.map((e) => ({ id: e.id }));
+        const createdTicketData = await tx.supportTicket.create({
+          data: {
+            ticketNumber: nextTicketNumber,
+            userId: auth.user.id,
+            taskName: `[Follow-up Maintenance] ${schedule.asset.assetName} (${schedule.asset.assetCode})`,
+            supportType: "Maintenance & Server Check",
+            module: "IT Asset Management",
+            area: schedule.asset.location || null,
+            startDate: executionDate,
+            slaTargetMinutes: ticketSlaTargetMinutes,
+            slaDueAt: ticketSlaDueAt,
+            issue:
+              (typeof findings === "string" && findings.trim()) ||
+              `Issue found during routine maintenance. Condition: ${overallCondition}`,
+            status: "Not Started",
+            priority: ticketPriority,
+            ticketType: "REQUEST",
+            requesterName: auth.user.name,
+            sourceType: TicketSource.MAINTENANCE,
+            assetId: schedule.asset.id,
+            ...(executorConnections.length > 0
+              ? { executors: { connect: executorConnections } }
+              : {}),
+          },
+          select: {
+            id: true,
+            ticketNumber: true,
+            status: true,
+            taskName: true,
+            priority: true,
+          },
+        });
+        createdTicket = createdTicketData;
+
+        if (executorConnections.length > 0) {
+          await tx.notification.createMany({
+            data: executorConnections.map((e) => ({
+              userId: e.id,
+              title: `Follow-Up Support: ${createdTicketData.ticketNumber || "New"}`,
+              message: `${createdTicketData.taskName} (${createdTicketData.priority})`,
+              type: "ASSIGNMENT",
+              link: `/support?ticket=${createdTicketData.id}`,
+            })),
+          });
+        }
+      }
+
       const log = await tx.maintenanceLog.create({
         data: {
-          scheduleId,
-          executedById: session.userId as string,
+          scheduleId: schedule.id,
+          executedById: auth.user.id,
           executionDate,
-          overallCondition,
-          findings: findings || null,
-          followUpNeeded: followUpNeeded || false,
-          attachment: attachment || null,
+          overallCondition: overallCondition as OverallCondition,
+          findings: typeof findings === "string" ? findings.trim() || null : null,
+          followUpNeeded: shouldFollowUp,
+          supportTicketId: createdTicket?.id || null,
+          attachment: typeof attachment === "string" ? attachment.trim() || null : null,
+          attachmentKey:
+            typeof attachmentKey === "string" ? attachmentKey.trim() || null : null,
           checklistResults: {
-            create: finalChecklistResults.map((item: any) => ({
-              itemText: item.itemText,       // Snapshot text — bukan relasi ke master
-              checked: item.checked ?? false,
-              note: item.note || null,
-            })),
+            create: finalChecklistResults.map(
+              (item: { itemText?: string; checked?: boolean; note?: string | null }) => ({
+                itemText: String(item.itemText || "Check item"),
+                checked: Boolean(item.checked),
+                note: typeof item.note === "string" ? item.note.trim() || null : null,
+              })
+            ),
           },
         },
         include: {
           executedBy: { select: { id: true, name: true } },
           checklistResults: true,
+          supportTicket: { select: { id: true, ticketNumber: true, status: true } },
         },
       });
 
-      // 2. Update schedule status ke DONE
       await tx.maintenanceSchedule.update({
-        where: { id: scheduleId },
+        where: { id: schedule.id },
         data: { status: "DONE" },
       });
 
-      // 3. Auto-generate next schedule jika RECURRING
-      let nextSchedule: any = null;
+      let nextSchedule = null;
       if (schedule.scheduleType === "RECURRING") {
-        const freqDays = schedule.frequencyDays || schedule.template?.defaultFrequencyDays || 30;
+        const freqDays =
+          schedule.frequencyDays || schedule.template?.defaultFrequencyDays || 30;
         const nextDueDate = new Date(executionDate);
         nextDueDate.setDate(nextDueDate.getDate() + freqDays);
 
-        // Copy executor assignment yang sama
-        const executorConnections = schedule.assignedExecutors.map(e => ({ id: e.id }));
+        const executorConnections = schedule.assignedExecutors.map((e) => ({ id: e.id }));
 
         nextSchedule = await tx.maintenanceSchedule.create({
           data: {
@@ -124,94 +236,98 @@ export async function POST(req: Request) {
             frequencyDays: schedule.frequencyDays,
             nextDueDate,
             status: "UPCOMING",
-            assignedExecutors: executorConnections.length > 0
-              ? { connect: executorConnections }
-              : undefined,
+            assignedExecutors:
+              executorConnections.length > 0 ? { connect: executorConnections } : undefined,
           },
           include: {
             assignedExecutors: { select: { id: true, name: true } },
           },
         });
 
-        // Buat notifikasi untuk executor tentang jadwal berikutnya
         if (executorConnections.length > 0) {
           await tx.notification.createMany({
-            data: executorConnections.map(e => ({
+            data: executorConnections.map((e) => ({
               userId: e.id,
               title: "Jadwal Maintenance Berikutnya",
               message: `Jadwal maintenance "${schedule.asset.assetName}" berikutnya: ${nextDueDate.toLocaleDateString("id-ID")}.`,
-              type: "SYSTEM",
-              link: `/maintenance/schedules/${nextSchedule.id}`,
+              type: "MAINTENANCE",
+              link: `/maintenance/schedules/${nextSchedule!.id}`,
             })),
           });
         }
       }
 
-      return { log, nextSchedule };
+      return { log, nextSchedule, createdTicket };
     });
 
-    // 4. Siapkan follow-up data jika followUpNeeded
-    let followUpData = null;
-    if (followUpNeeded) {
-      followUpData = {
-        suggestedTicket: {
-          taskName: `[Follow-up Maintenance] ${schedule.asset.assetName} - ${schedule.asset.assetCode}`,
-          supportType: "Maintenance & Server Check",
-          module: "IT Asset Management",
-          area: schedule.asset.location,
-          issue: findings || `Issue found during routine maintenance. Condition: ${overallCondition}`,
-          priority: overallCondition === "BERMASALAH" ? "High" : "Normal",
-          ticketType: "REQUEST",
-          requesterName: session.name,
-          maintenanceLogId: result.log.id,
-        },
-        message: "Maintenance memerlukan follow-up. Gunakan data di atas untuk membuat Support Ticket.",
-      };
-    }
+    const followUpData = shouldFollowUp
+      ? {
+          createdTicket: result.createdTicket,
+          suggestedTicket: {
+            taskName: `[Follow-up Maintenance] ${schedule.asset.assetName} - ${schedule.asset.assetCode}`,
+            supportType: "Maintenance & Server Check",
+            module: "IT Asset Management",
+            area: schedule.asset.location,
+            issue:
+              findings ||
+              `Issue found during routine maintenance. Condition: ${overallCondition}`,
+            priority: ticketPriority,
+            ticketType: "REQUEST",
+            requesterName: auth.user.name,
+            maintenanceLogId: result.log.id,
+          },
+        }
+      : null;
 
-    return NextResponse.json({
-      log: result.log,
-      scheduleStatus: "DONE",
-      nextSchedule: result.nextSchedule,
-      followUp: followUpData,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        log: result.log,
+        scheduleStatus: "DONE",
+        nextSchedule: result.nextSchedule,
+        followUp: followUpData,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Failed to submit maintenance log:", error);
-    return NextResponse.json({ error: "Failed to submit maintenance log" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to submit maintenance log" },
+      { status: 500 }
+    );
   }
 }
 
-// GET /api/maintenance-logs — List logs (All authenticated, filtered)
+// GET /api/maintenance-logs — List maintenance logs (scoped by Admin vs Staff)
 export async function GET(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const scheduleId = searchParams.get("scheduleId");
     const assetId = searchParams.get("assetId");
     const executedById = searchParams.get("executedById");
     const overallCondition = searchParams.get("overallCondition");
 
-    const where: any = {};
+    const where: Prisma.MaintenanceLogWhereInput = {};
     if (scheduleId) where.scheduleId = scheduleId;
     if (executedById) where.executedById = executedById;
-    if (overallCondition) where.overallCondition = overallCondition;
-    if (assetId) {
-      where.schedule = { assetId };
+    if (
+      overallCondition &&
+      ["BAIK", "PERLU_PERHATIAN", "BERMASALAH"].includes(overallCondition)
+    ) {
+      where.overallCondition = overallCondition as OverallCondition;
     }
 
-    // Staff hanya bisa lihat log dari schedule mereka
-    if (!isMaintenanceAdmin(session)) {
-      where.schedule = {
-        ...where.schedule,
-        assignedExecutors: { some: { id: session.userId } },
-      };
+    const scheduleFilter: Prisma.MaintenanceScheduleWhereInput = {};
+    if (assetId) scheduleFilter.assetId = assetId;
+    if (!isMaintenanceAdmin(auth.user)) {
+      scheduleFilter.assignedExecutors = { some: { id: auth.user.id } };
+    }
+    if (Object.keys(scheduleFilter).length > 0) {
+      where.schedule = scheduleFilter;
     }
 
     const logs = await prisma.maintenanceLog.findMany({
@@ -223,9 +339,18 @@ export async function GET(req: Request) {
           select: {
             id: true,
             scheduleType: true,
-            asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { name: true } } } },
+            asset: {
+              select: {
+                id: true,
+                assetCode: true,
+                assetName: true,
+                location: true,
+                division: { select: { name: true } },
+              },
+            },
           },
         },
+        supportTicket: { select: { id: true, ticketNumber: true, status: true } },
         checklistResults: true,
       },
     });

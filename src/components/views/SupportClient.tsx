@@ -1,1036 +1,1385 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Loader2, Trash2, Save, XCircle, Clock, CheckCircle2, PauseCircle, AlertCircle, Table2, Check, X, Download, Bell } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import ModernSelect from "../common/ModernSelect";
-import { Paperclip, MessageSquare, Link as LinkIcon } from "lucide-react";
-import { CustomSelect } from "../ui/CustomSelect";
-import CommentsDrawer from "../common/CommentsDrawer";
-import dynamic from "next/dynamic";
-import "react-quill-new/dist/quill.snow.css";
+import { format } from "date-fns";
+import {
+  Activity,
+  AlertTriangle,
+  Bell,
+  Box,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  Download,
+  ExternalLink,
+  FolderKanban,
+  Headset,
+  Layers,
+  Loader2,
+  MapPin,
+  MessageSquare,
+  Pause,
+  Play,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
+import { useI18n } from "@/i18n";
+import { ThemedSelect } from "@/components/ui/ThemedSelect";
+import { ThemedDatePicker } from "@/components/ui/ThemedDatePicker";
+import CommentsDrawer from "@/components/common/CommentsDrawer";
+import { formatDurationCompact } from "@/lib/format";
+import { useUiPref } from "@/lib/ui-prefs";
+import {
+  computeTicketLoggedSeconds,
+  evaluateTicketSla,
+  formatCompactMinutes,
+  formatSafeCsvCell,
+  normalizeSupportPriority,
+  stripRichHtml,
+} from "@/lib/support-helpers";
+import SupportTicketDrawer from "./support/SupportTicketDrawer";
+import type {
+  SupportAssetOption,
+  SupportCurrentUser,
+  SupportModuleOption,
+  SupportProjectOption,
+  SupportSlaPolicyItem,
+  SupportTicketItem,
+  SupportUserItem,
+} from "./support/types";
 
-const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+interface SupportClientProps {
+  initialTickets: SupportTicketItem[];
+  currentUser: SupportCurrentUser;
+  systemUsers: SupportUserItem[];
+  modules: SupportModuleOption[];
+  areas: string[];
+  slaPolicies: SupportSlaPolicyItem[];
+  assets: SupportAssetOption[];
+  projects: SupportProjectOption[];
+  initialTicketId?: string | null;
+}
 
-export default function SupportClient({ tickets = [], currentUser, systemUsers = [] }: { tickets: any[], currentUser: any, systemUsers?: any[] }) {
-  const [addingTicket, setAddingTicket] = useState(false);
-  const [editingTicket, setEditingTicket] = useState<any | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'my-logs' | 'team-logs'>('my-logs');
-  const [activeCommentTicket, setActiveCommentTicket] = useState<{id: string, title: string} | null>(null);
-  const [remindingTicketId, setRemindingTicketId] = useState<string | null>(null);
-  
-  const defaultTaskData = {
-    ticketType: "DAILY_ACTIVITY",
-    requesterName: "",
-    executorIds: [] as string[],
-    taskName: "",
-    supportType: "User Admin",
-    module: "Sistem AI",
-    customModule: "",
-    startDate: new Date(),
-    endDate: new Date(new Date().getTime() + 60 * 60 * 1000), // +1 hour
-    issue: "",
-    solution: "",
-    status: "Done",
-    priority: "Normal",
-    attachment: "",
-    link: "",
-    area: ""
+const PAGE_SIZE = 50;
+
+export default function SupportClient({
+  initialTickets,
+  currentUser,
+  systemUsers,
+  modules,
+  areas,
+  slaPolicies,
+  assets,
+  projects,
+  initialTicketId = null,
+}: SupportClientProps) {
+  const { locale, t } = useI18n();
+  const router = useRouter();
+  const canViewTeam = currentUser.role === "Admin" || currentUser.canViewTeamLogs;
+
+  const [tickets, setTickets] = useState<SupportTicketItem[]>(initialTickets);
+  const [prevInitialTickets, setPrevInitialTickets] = useState<SupportTicketItem[]>(initialTickets);
+  if (initialTickets !== prevInitialTickets) {
+    setPrevInitialTickets(initialTickets);
+    setTickets(initialTickets);
+  }
+
+  const [viewMode, setViewMode] = useUiPref("support_mode", "queue") as [
+    "queue" | "daily" | "all",
+    (v: string) => void,
+  ];
+  const [scope, setScope] = useUiPref(
+    "support_scope",
+    canViewTeam ? "team" : "my"
+  ) as ["my" | "team", (v: string) => void];
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [slaFilter, setSlaFilter] = useState<"all" | "alert" | "urgent">("all");
+  const [userFilter, setUserFilter] = useState("all");
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+
+  // Drawer & modals
+  const [drawerOpen, setDrawerOpen] = useState(() =>
+    Boolean(initialTicketId && initialTickets.some((tk) => tk.id === initialTicketId))
+  );
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(initialTicketId);
+  const [drawerDefaultType, setDrawerDefaultType] = useState<"REQUEST" | "DAILY_ACTIVITY">(
+    "REQUEST"
+  );
+  const [commentTicket, setCommentTicket] = useState<{ id: string; title: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SupportTicketItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [timerBusyId, setTimerBusyId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const showToast = useCallback((kind: "ok" | "err", text: string) => {
+    setToast({ kind, text });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const refreshTickets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/support", { cache: "no-store" });
+      if (res.ok) {
+        setTickets(await res.json());
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to refresh support tickets:", err);
+    }
+  }, [router]);
+
+  const runningTicket = useMemo(
+    () =>
+      tickets.find((tk) =>
+        (tk.timeLogs || []).some((l) => !l.endTime && l.userId === currentUser.id)
+      ) || null,
+    [tickets, currentUser.id]
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(Date.now()), runningTicket ? 1000 : 30_000);
+    return () => clearInterval(interval);
+  }, [runningTicket]);
+
+  const effectiveScope: "my" | "team" = canViewTeam ? scope : "my";
+
+  const scopedTickets = useMemo(() => {
+    return tickets.filter((tk) => {
+      if (effectiveScope === "my") {
+        const isCreator = tk.userId === currentUser.id;
+        const isExecutor = (tk.executors || []).some((e) => e.id === currentUser.id);
+        if (!isCreator && !isExecutor) return false;
+      }
+      return true;
+    });
+  }, [tickets, effectiveScope, currentUser.id]);
+
+  // Tab badge counts
+  const modeCounts = useMemo(() => {
+    let queueOpen = 0;
+    let queueTotal = 0;
+    let dailyTotal = 0;
+    for (const tk of scopedTickets) {
+      if (tk.ticketType === "REQUEST") {
+        queueTotal += 1;
+        if (tk.status !== "Done") queueOpen += 1;
+      } else {
+        dailyTotal += 1;
+      }
+    }
+    return {
+      queueOpen,
+      queueTotal,
+      dailyTotal,
+      allTotal: scopedTickets.length,
+    };
+  }, [scopedTickets]);
+
+  // 4 Enterprise KPI calculations for current scope
+  const kpiSummary = useMemo(() => {
+    const requests = scopedTickets.filter((tk) => tk.ticketType === "REQUEST");
+    const daily = scopedTickets.filter((tk) => tk.ticketType !== "REQUEST");
+
+    const openReq = requests.filter((tk) => tk.status !== "Done");
+    const urgentOpen = openReq.filter(
+      (tk) => normalizeSupportPriority(tk.priority) === "Urgent"
+    ).length;
+
+    let slaMetOrOnTrack = 0;
+    let slaTrackedTotal = 0;
+    let atRiskCount = 0;
+    let breachedCount = 0;
+    let totalResolveMins = 0;
+    let resolvedWithDuration = 0;
+
+    for (const tk of requests) {
+      const ev = evaluateTicketSla(tk, slaPolicies, nowMs);
+      if (ev.state !== "NONE") {
+        slaTrackedTotal += 1;
+        if (ev.state === "MET" || ev.state === "ON_TRACK") slaMetOrOnTrack += 1;
+        if (ev.state === "AT_RISK") atRiskCount += 1;
+        if (ev.state === "BREACHED" || ev.state === "MISSED") breachedCount += 1;
+      }
+      if (tk.status === "Done" && tk.endDate) {
+        const startMs = new Date(tk.startDate).getTime();
+        const endMs = new Date(tk.endDate).getTime();
+        if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+          totalResolveMins += (endMs - startMs) / 60_000;
+          resolvedWithDuration += 1;
+        }
+      }
+    }
+
+    let dailySeconds = 0;
+    for (const tk of scopedTickets) {
+      const logged = computeTicketLoggedSeconds(tk.timeLogs, nowMs);
+      if (logged > 0) {
+        dailySeconds += logged;
+      } else if (tk.endDate) {
+        const s = new Date(tk.startDate).getTime();
+        const e = new Date(tk.endDate).getTime();
+        if (!Number.isNaN(s) && !Number.isNaN(e) && e > s) {
+          dailySeconds += Math.round((e - s) / 1000);
+        }
+      }
+    }
+
+    const slaRate =
+      slaTrackedTotal > 0 ? Math.round((slaMetOrOnTrack / slaTrackedTotal) * 100) : 100;
+    const avgMttrMinutes =
+      resolvedWithDuration > 0 ? Math.round(totalResolveMins / resolvedWithDuration) : 0;
+
+    return {
+      openReqCount: openReq.length,
+      urgentOpen,
+      slaRate,
+      atRiskCount,
+      breachedCount,
+      dailyCount: daily.length,
+      dailySeconds,
+      avgMttrMinutes,
+      resolvedCount: resolvedWithDuration,
+    };
+  }, [scopedTickets, slaPolicies, nowMs]);
+
+  const activeTicket = useMemo(
+    () => (activeTicketId ? tickets.find((tk) => tk.id === activeTicketId) || null : null),
+    [activeTicketId, tickets]
+  );
+
+  // Build dropdown options from live DB modules + categories + any historical values in tickets
+  const moduleFilterOptions = useMemo(() => {
+    const names = new Set<string>(modules.map((m) => m.name));
+    for (const tk of tickets) {
+      if (tk.module) names.add(tk.module);
+    }
+    return [
+      { value: "all", label: t.support.allModules },
+      ...Array.from(names)
+        .sort()
+        .map((m) => ({ value: m, label: m })),
+    ];
+  }, [modules, tickets, t.support.allModules]);
+
+  const categoryFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const m of modules) {
+      for (const c of m.categories) names.add(c.name);
+    }
+    for (const tk of tickets) {
+      if (tk.supportType) names.add(tk.supportType);
+    }
+    return [
+      { value: "all", label: t.support.allCategories },
+      ...Array.from(names)
+        .sort()
+        .map((c) => ({ value: c, label: c })),
+    ];
+  }, [modules, tickets, t.support.allCategories]);
+
+  const filteredTickets = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return scopedTickets.filter((tk) => {
+      if (viewMode === "queue" && tk.ticketType !== "REQUEST") return false;
+      if (viewMode === "daily" && tk.ticketType === "REQUEST") return false;
+
+      if (userFilter !== "all") {
+        const isCreator = tk.userId === userFilter;
+        const isExec = (tk.executors || []).some((e) => e.id === userFilter);
+        if (!isCreator && !isExec) return false;
+      }
+      if (moduleFilter !== "all" && tk.module !== moduleFilter) return false;
+      if (categoryFilter !== "all" && tk.supportType !== categoryFilter) return false;
+      if (statusFilter !== "all" && tk.status !== statusFilter) return false;
+
+      if (dateFilter) {
+        const d = new Date(tk.startDate);
+        const dayStr = Number.isNaN(d.getTime()) ? "" : format(d, "yyyy-MM-dd");
+        if (dayStr !== dateFilter) return false;
+      }
+
+      if (slaFilter === "alert") {
+        const ev = evaluateTicketSla(tk, slaPolicies, nowMs);
+        if (ev.state !== "AT_RISK" && ev.state !== "BREACHED" && ev.state !== "MISSED") {
+          return false;
+        }
+      } else if (slaFilter === "urgent") {
+        const p = normalizeSupportPriority(tk.priority);
+        if (p !== "Urgent" && p !== "High") return false;
+      }
+
+      if (q) {
+        const haystack = [
+          tk.ticketNumber || "",
+          tk.taskName,
+          tk.requesterName || "",
+          tk.module,
+          tk.supportType,
+          tk.area || "",
+          tk.asset?.assetCode || "",
+          tk.asset?.assetName || "",
+          stripRichHtml(tk.issue),
+          (tk.executors || []).map((e) => e.name).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [
+    scopedTickets,
+    viewMode,
+    userFilter,
+    moduleFilter,
+    categoryFilter,
+    statusFilter,
+    dateFilter,
+    slaFilter,
+    searchQuery,
+    slaPolicies,
+    nowMs,
+  ]);
+
+  const visibleTickets = useMemo(
+    () => filteredTickets.slice(0, visibleLimit),
+    [filteredTickets, visibleLimit]
+  );
+
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    slaFilter !== "all" ||
+    userFilter !== "all" ||
+    moduleFilter !== "all" ||
+    categoryFilter !== "all" ||
+    statusFilter !== "all" ||
+    dateFilter !== "";
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSlaFilter("all");
+    setUserFilter("all");
+    setModuleFilter("all");
+    setCategoryFilter("all");
+    setStatusFilter("all");
+    setDateFilter("");
   };
 
-  const [newTaskData, setNewTaskData] = useState(defaultTaskData);
-  const [editTaskData, setEditTaskData] = useState<any>(null);
+  const handleExportCsv = () => {
+    const headers = [
+      "Ticket #",
+      "Type",
+      "Start Time",
+      "End Time",
+      "Requester",
+      "Executor",
+      "Subject",
+      "Module",
+      "Category",
+      "Area",
+      "Asset",
+      "Issue",
+      "Solution",
+      "Status",
+      "Priority",
+    ];
+    const rows = filteredTickets.map((tk) => [
+      tk.ticketNumber || tk.id,
+      tk.ticketType,
+      tk.startDate ? format(new Date(tk.startDate), "yyyy-MM-dd HH:mm") : "-",
+      tk.endDate ? format(new Date(tk.endDate), "yyyy-MM-dd HH:mm") : "-",
+      tk.requesterName || tk.user?.name || "-",
+      tk.ticketType === "REQUEST"
+        ? (tk.executors || []).map((e) => e.name).join(", ") || "Unassigned"
+        : tk.user?.name || "-",
+      tk.taskName,
+      tk.module,
+      tk.supportType,
+      tk.area || "-",
+      tk.asset ? `${tk.asset.assetCode} (${tk.asset.assetName})` : "-",
+      stripRichHtml(tk.issue),
+      stripRichHtml(tk.solution),
+      tk.status,
+      normalizeSupportPriority(tk.priority),
+    ]);
 
-  const router = useRouter();
+    const csv = [
+      headers.map(formatSafeCsvCell).join(","),
+      ...rows.map((r) => r.map(formatSafeCsvCell).join(",")),
+    ].join("\n");
 
-  const handleAddTicket = async () => {
-    if (!newTaskData.taskName.trim()) return;
-    setIsSubmitting(true);
-    
-    const finalModule = newTaskData.module === "Lainnya" ? newTaskData.customModule : newTaskData.module;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `IT_Support_${viewMode}_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
+  const handleQuickTimer = async (tk: SupportTicketItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (timerBusyId) return;
+    setTimerBusyId(tk.id);
+    const isRunningHere = (tk.timeLogs || []).some(
+      (l) => !l.endTime && l.userId === currentUser.id
+    );
     try {
-      await fetch("/api/support", {
+      const res = await fetch("/api/timelogs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...newTaskData,
-          status: newTaskData.ticketType === "REQUEST" ? "Not Started" : newTaskData.status,
-          module: finalModule,
-          area: newTaskData.supportType === "Master Data" ? newTaskData.area : null
-        })
+          supportTicketId: tk.id,
+          action: isRunningHere ? "PAUSE" : "START",
+        }),
       });
-      setNewTaskData(defaultTaskData);
-      setAddingTicket(false);
-      router.refresh();
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEditing: boolean) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
       if (res.ok) {
-        if (isEditing) setEditTaskData({ ...editTaskData, attachment: data.url });
-        else setNewTaskData({ ...newTaskData, attachment: data.url });
+        await refreshTickets();
       } else {
-        alert(data.error);
+        showToast("err", "Timer update failed");
       }
-    } catch (error) {
-      console.error("Upload error", error);
-      alert("Failed to upload file");
-    }
-  };
-
-  const handleUpdateTicket = async () => {
-    if (!editTaskData || !editTaskData.taskName.trim()) return;
-    setIsSubmitting(true);
-    
-    const finalModule = editTaskData.module === "Lainnya" ? editTaskData.customModule : editTaskData.module;
-
-    try {
-      await fetch(`/api/support/${editTaskData.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskName: editTaskData.taskName,
-          supportType: editTaskData.supportType,
-          module: finalModule,
-          startDate: editTaskData.startDate ? editTaskData.startDate.toISOString() : new Date().toISOString(),
-          endDate: editTaskData.endDate ? editTaskData.endDate.toISOString() : null,
-          issue: editTaskData.issue,
-          solution: editTaskData.solution,
-          status: editTaskData.status,
-          priority: editTaskData.priority,
-          attachment: editTaskData.attachment,
-          ticketType: editTaskData.ticketType,
-          requesterName: editTaskData.requesterName,
-          executorIds: editTaskData.executorIds || [],
-          link: editTaskData.link,
-          area: editTaskData.supportType === "Master Data" ? editTaskData.area : null
-        })
-      });
-      setEditingTicket(null);
-      setEditTaskData(null);
-      router.refresh();
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
-  };
-
-  const handleDeleteTicket = async (taskId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this ticket?")) return;
-    try { 
-      await fetch(`/api/support/${taskId}`, { method: "DELETE" }); 
-      router.refresh(); 
-    } catch (error) { 
-      console.error(error); 
-    }
-  };
-
-  const openEditModal = (ticket: any) => {
-    setEditingTicket(ticket);
-    const isCustomModule = !(ticket.module in CATEGORY_MAP) && ticket.module !== "General IT / Lainnya...";
-    setEditTaskData({
-      ...ticket,
-      startDate: ticket.startDate ? new Date(ticket.startDate) : new Date(),
-      endDate: ticket.endDate ? new Date(ticket.endDate) : null,
-      module: isCustomModule ? "General IT / Lainnya..." : ticket.module,
-      customModule: isCustomModule ? ticket.module : "",
-      priority: ticket.priority || "Normal",
-      attachment: ticket.attachment || "",
-      ticketType: ticket.ticketType || "DAILY_ACTIVITY",
-      requesterName: ticket.requesterName || "",
-      executorIds: ticket.executors ? ticket.executors.map((e: any) => e.id) : [],
-      link: ticket.link || "",
-      area: ticket.area || ""
-    });
-  };
-
-  const CATEGORY_MAP: Record<string, string[]> = {
-    "Sistem AI": ["User Admin", "Master Data", "Proses Sales", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
-    "Sistem PIC": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
-    "Sistem HRIS": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
-    "Factory Sistem": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
-    "Website / Portal": ["User Admin", "Master Data", "Bug Fixing & Error Handling", "New Feature / Development", "User Training & Guidance", "Maintenance & Server Check"],
-    "Jaringan (Wi-Fi/LAN/Mikrotik)": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
-    "Server & Data Center": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
-    "CCTV & Security System": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
-    "Telepon & PABX": ["Network Troubleshooting", "Instalasi & Relokasi Baru", "Maintenance & Monitoring", "Konfigurasi & Setting"],
-    "PC / Laptop": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
-    "Printer / Scanner": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
-    "Perangkat Lain (UPS, Monitor, dll)": ["Hardware Troubleshooting", "Instalasi & Setup Baru", "Maintenance & Consumable", "Penggantian Sparepart"],
-    "Email & Cloud (Google Workspace/AD)": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
-    "Permintaan Data / Report": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
-    "IT Asset Management": ["User Admin", "Data Extraction & Query", "Pengadaan & Pembelian (Procurement)", "Peminjaman & Pengembalian Aset"],
-    "General IT / Lainnya...": ["Rapat & Diskusi Internal", "Koordinasi Vendor", "Lainnya..."]
-  };
-
-  const MODULE_GROUPS = [
-    {
-      label: "Enterprise Systems & Applications",
-      options: ["Sistem AI", "Sistem PIC", "Sistem HRIS", "Factory Sistem", "Website / Portal"]
-    },
-    {
-      label: "Infrastructure & Network",
-      options: ["Jaringan (Wi-Fi/LAN/Mikrotik)", "Server & Data Center", "CCTV & Security System", "Telepon & PABX"]
-    },
-    {
-      label: "Hardware & End-User Devices",
-      options: ["PC / Laptop", "Printer / Scanner", "Perangkat Lain (UPS, Monitor, dll)"]
-    },
-    {
-      label: "Data, Account & IT Management",
-      options: ["Email & Cloud (Google Workspace/AD)", "Permintaan Data / Report", "IT Asset Management"]
-    },
-    {
-      label: "General",
-      options: ["General IT / Lainnya..."]
-    }
-  ];
-
-  const AVAILABLE_AREAS = [
-    "JATENG 1", "JATENG 2", "JATENG 3", "KALBAR", "KALTIM", "KALSELTENG", "DENPASAR", 
-    "JAKARTA 1", "JAKARTA 2", "JAKARTA 3", "JAKARTA 4", "JAKARTA 5", "JAKARTA 6", "JAKARTA 7", 
-    "KAM PROJECT", "MEDAN & ACEH RAYA", "TANGERANG", "SURABAYA 1", "SURABAYA 2", "MALANG", 
-    "SULAWESI 1", "SULAWESI 2", "SULAWESI 3", "JAWA BARAT 1", "JAWA BARAT 2", "SUMBANGSEL 1", "SUMBANGSEL 2"
-  ];
-
-  const statusOptions = [
-    { value: "Done", label: "Done" },
-    { value: "Ongoing", label: "Ongoing" },
-    { value: "Suspended", label: "Suspended" },
-  ];
-
-  const priorityOptions = [
-    { value: "Low", label: "Low" },
-    { value: "Normal", label: "Normal" },
-    { value: "High", label: "High" },
-    { value: "URGENT", label: "URGENT" }
-  ];
-
-  const renderPriority = (priority: string) => {
-    switch (priority) {
-      case "URGENT": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 animate-pulse">URGENT</span>;
-      case "High": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold border border-orange-200">High</span>;
-      case "Low": return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">Low</span>;
-      default: return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-200">Normal</span>;
-    }
-  };
-
-  const handleRemind = async (ticket: any) => {
-    if (remindingTicketId) return;
-    setRemindingTicketId(ticket.id);
-    try {
-      const res = await fetch(`/api/support/${ticket.id}/remind`, { method: "POST" });
-      if (res.ok) {
-        alert("Pengingat berhasil dikirim ke Telegram!");
-      } else {
-        alert("Gagal mengirim pengingat.");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Terjadi kesalahan.");
     } finally {
-      setRemindingTicketId(null);
+      setTimerBusyId(null);
     }
   };
 
-  const cleanHtmlText = (html: string | null | undefined) => {
-    if (!html) return "-";
-    return html
-      .replace(/<[^>]*>?/gm, '') // Remove HTML tags
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .trim();
-  };
-
-  const renderStatus = (status: string) => {
-    switch (status) {
-      case "Done":
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200/60"><CheckCircle2 className="w-3 h-3" /> Done</span>;
-      case "Ongoing":
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-200/60"><Clock className="w-3 h-3" /> Ongoing</span>;
-      case "Suspended":
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold border border-amber-200/60"><PauseCircle className="w-3 h-3" /> Suspended</span>;
-      default:
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-semibold border border-gray-200/60"><AlertCircle className="w-3 h-3" /> {status}</span>;
+  const handleQuickRemind = async (tk: SupportTicketItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (remindingId) return;
+    setRemindingId(tk.id);
+    try {
+      const res = await fetch(`/api/support/${tk.id}/remind`, { method: "POST" });
+      showToast(res.ok ? "ok" : "err", res.ok ? t.support.remindSent : t.support.remindFailed);
+    } catch {
+      showToast("err", t.support.remindFailed);
+    } finally {
+      setRemindingId(null);
     }
   };
 
-  const formatDate = (val: string | Date) => {
-    if (!val) return "-";
-    const d = new Date(val);
-    return d.toLocaleString("en-US", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
-  };
-
-  const handleExportCSV = () => {
-    // Generate CSV string from displayedTickets
-    const headers = ["Start Time", "End Time", "Requester", "Executor", "Task Name", "Category", "Module", "Issue", "Solution", "Status"];
-    const rows = displayedTickets.map(t => [
-      t.startDate ? new Date(t.startDate).toLocaleString() : "-",
-      t.endDate ? new Date(t.endDate).toLocaleString() : "-",
-      `"${(t.requesterName || t.user?.name || "Unknown").replace(/"/g, '""')}"`,
-      `"${(t.ticketType === "REQUEST" ? (t.executors?.map((e:any)=>e.name).join(", ") || "Belum ditentukan") : (t.user?.name || "Unknown")).replace(/"/g, '""')}"`,
-      `"${(t.taskName || "").replace(/"/g, '""')}"`,
-      `"${(t.supportType || "").replace(/"/g, '""')}"`,
-      `"${(t.module || "").replace(/"/g, '""')}"`,
-      `"${(t.issue || "").replace(/"/g, '""')}"`,
-      `"${(t.solution || "").replace(/"/g, '""')}"`,
-      t.status
-    ]);
-    
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(e => e.join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Support_Logs_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const [filters, setFilters] = useState<{
-    user: string;
-    module: string;
-    category: string;
-    status: string;
-    date: Date | null;
-  }>({
-    user: 'all',
-    module: 'all',
-    category: 'all',
-    status: 'all',
-    date: null
-  });
-
-  const displayedTickets = tickets.filter(ticket => {
-    // Tab filter
-    const isMyLog = ticket.userId === currentUser.id || ticket.executors?.some((e: any) => e.id === currentUser.id);
-    if (activeTab === 'my-logs' && !isMyLog) return false;
-    if (activeTab === 'team-logs' && isMyLog) return false;
-
-    // Dropdown filters
-    if (filters.user !== 'all') {
-      const isCreator = ticket.userId === filters.user;
-      const isExecutor = ticket.executors?.some((e: any) => e.id === filters.user);
-      if (!isCreator && !isExecutor) return false;
-    }
-    if (filters.module !== 'all' && ticket.module !== filters.module) return false;
-    if (filters.category !== 'all' && ticket.supportType !== filters.category) return false;
-    if (filters.status !== 'all' && ticket.status !== filters.status) return false;
-
-    // Date filter (matches the exact day)
-    if (filters.date) {
-      const ticketDate = new Date(ticket.startDate);
-      const filterDate = new Date(filters.date);
-      if (
-        ticketDate.getFullYear() !== filterDate.getFullYear() ||
-        ticketDate.getMonth() !== filterDate.getMonth() ||
-        ticketDate.getDate() !== filterDate.getDate()
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  // Extract unique options for filters from all tickets (excluding current user for team logs)
-  const availableTickets = tickets.filter(t => activeTab === 'team-logs' ? t.userId !== currentUser.id : t.userId === currentUser.id);
-  
-  const allTeamUsersMap = new Map();
-  tickets.forEach(t => {
-    if (t.userId !== currentUser.id && t.user) {
-      allTeamUsersMap.set(t.userId, t.user);
-    }
-    if (t.executors && t.executors.length > 0) {
-      t.executors.forEach((e: any) => {
-        if (e.id !== currentUser.id) {
-          allTeamUsersMap.set(e.id, e);
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/support/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (activeTicketId === deleteTarget.id) {
+          setDrawerOpen(false);
+          setActiveTicketId(null);
         }
-      });
+        setDeleteTarget(null);
+        await refreshTickets();
+      } else {
+        showToast("err", "Failed to delete ticket");
+      }
+    } finally {
+      setDeleting(false);
     }
-  });
-  const uniqueUsers = Array.from(allTeamUsersMap.values());
-  const uniqueModules = MODULE_GROUPS.flatMap(g => g.options);
-  const uniqueCategories = Array.from(new Set(Object.values(CATEGORY_MAP).flat()));
+  };
 
-  const inputClass = "w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-800 placeholder:text-gray-400 outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all";
+  const openCreateDrawer = (type: "REQUEST" | "DAILY_ACTIVITY") => {
+    setActiveTicketId(null);
+    setDrawerDefaultType(type);
+    setDrawerOpen(true);
+  };
+
+  const openTicketDrawer = (tk: SupportTicketItem) => {
+    setActiveTicketId(tk.id);
+    setDrawerOpen(true);
+  };
+
+  const renderStatusPill = (status: string) => {
+    if (status === "Done" || status === "Completed") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--ok-bg)] border border-[var(--ok-stroke)] text-[var(--ok)] text-[10px] font-bold whitespace-nowrap">
+          <CheckCircle2 className="w-3 h-3" /> Done
+        </span>
+      );
+    }
+    if (status === "Ongoing") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--info-bg)] border border-[var(--info-stroke)] text-[var(--info)] text-[10px] font-bold whitespace-nowrap">
+          <Clock className="w-3 h-3" /> Ongoing
+        </span>
+      );
+    }
+    if (status === "Suspended") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--warn-bg)] border border-[var(--warn-stroke)] text-[var(--warn)] text-[10px] font-bold whitespace-nowrap">
+          <AlertTriangle className="w-3 h-3" /> Suspended
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-ink2)] text-[10px] font-bold whitespace-nowrap">
+        {status}
+      </span>
+    );
+  };
+
+  const renderPriorityPill = (priority: string) => {
+    const norm = normalizeSupportPriority(priority);
+    if (norm === "Urgent") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--err-bg)] border border-[var(--err-stroke)] text-[var(--err)] font-mono-code text-[10px] font-bold whitespace-nowrap">
+          URGENT
+        </span>
+      );
+    }
+    if (norm === "High") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--warn-bg)] border border-[var(--warn-stroke)] text-[var(--warn)] font-mono-code text-[10px] font-bold whitespace-nowrap">
+          High
+        </span>
+      );
+    }
+    if (norm === "Low") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-muted)] font-mono-code text-[10px] font-bold whitespace-nowrap">
+          Low
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--brand-tint)] border border-[var(--brand-stroke)] text-[var(--brand)] font-mono-code text-[10px] font-bold whitespace-nowrap">
+        Normal
+      </span>
+    );
+  };
+
+  const renderSlaBadge = (tk: SupportTicketItem) => {
+    const ev = evaluateTicketSla(tk, slaPolicies, nowMs);
+    if (ev.state === "NONE") return null;
+
+    const badgeTone =
+      ev.state === "BREACHED" || ev.state === "MISSED"
+        ? "bg-[var(--err-bg)] border-[var(--err-stroke)] text-[var(--err)]"
+        : ev.state === "AT_RISK"
+          ? "bg-[var(--warn-bg)] border-[var(--warn-stroke)] text-[var(--warn)]"
+          : "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]";
+
+    const label =
+      ev.state === "BREACHED"
+        ? `BREACH ${ev.remainingMinutes !== null ? formatCompactMinutes(ev.remainingMinutes) : ""}`
+        : ev.state === "AT_RISK"
+          ? `RISK ${ev.remainingMinutes !== null ? formatCompactMinutes(ev.remainingMinutes) : ""}`
+          : ev.state === "MET"
+            ? t.support.slaMet
+            : ev.state === "MISSED"
+              ? t.support.slaMissed
+              : `${ev.remainingMinutes !== null ? formatCompactMinutes(ev.remainingMinutes) : "SLA"}`;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-mono-code text-[9.5px] font-bold tnum whitespace-nowrap ${badgeTone}`}
+      >
+        {label.trim()}
+      </span>
+    );
+  };
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('my-logs')}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'my-logs' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}
-          >
-            My Logs
+    <div className="w-full px-3 sm:px-5 lg:px-6 py-4 space-y-4">
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-20 md:bottom-5 right-4 z-50 px-4 py-2.5 rounded-2xl border shadow-lg text-xs font-semibold flex items-center gap-2 ${
+            toast.kind === "ok"
+              ? "bg-[var(--bg-surface)] border-[var(--ok-stroke)] text-[var(--ok)]"
+              : "bg-[var(--bg-surface)] border-[var(--err-stroke)] text-[var(--err)]"
+          }`}
+        >
+          <span>{toast.text}</span>
+          <button type="button" onClick={() => setToast(null)} className="cursor-pointer">
+            <X className="w-3.5 h-3.5" />
           </button>
-          {(currentUser?.role === 'Admin' || currentUser?.canViewTeamLogs) && (
+        </div>
+      )}
+
+      {/* 1. Top Workspace Control Bar */}
+      <section className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-2.5 sm:px-3.5">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap sm:items-center gap-2">
+          {/* Mode Switcher: Support Queue | Daily Activity | All */}
+          <div className="grid grid-cols-3 sm:inline-flex items-center bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-2xl sm:rounded-full p-0.5 gap-0.5 w-full sm:w-auto">
+            {(
+              [
+                {
+                  id: "queue",
+                  label: t.support.queueTab,
+                  count: `${modeCounts.queueOpen}/${modeCounts.queueTotal}`,
+                  icon: Headset,
+                },
+                {
+                  id: "daily",
+                  label: t.support.dailyTab,
+                  count: String(modeCounts.dailyTotal),
+                  icon: ClipboardList,
+                },
+                {
+                  id: "all",
+                  label: t.support.allTab,
+                  count: String(modeCounts.allTotal),
+                  icon: Layers,
+                },
+              ] as const
+            ).map((tab) => {
+              const Icon = tab.icon;
+              const active = viewMode === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setViewMode(tab.id);
+                    setVisibleLimit(PAGE_SIZE);
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    active
+                      ? "bg-[var(--bg-surface)] text-[var(--brand)] shadow-2xs"
+                      : "text-[var(--text-ink2)] hover:text-[var(--text-ink)]"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate max-w-full">{tab.label}</span>
+                  <span className="hidden md:inline font-mono-code text-[9.5px] text-[var(--text-muted)] tnum">
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Scope Toggle (My Queue vs Team Ops) */}
+          {canViewTeam && (
+            <div className="inline-flex items-center bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-full p-0.5 gap-0.5 self-start sm:self-auto">
+              {(
+                [
+                  { id: "team", label: t.support.teamScope },
+                  { id: "my", label: t.support.myScope },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setScope(opt.id)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    effectiveScope === opt.id
+                      ? "bg-[var(--bg-surface)] text-[var(--text-ink)] shadow-2xs"
+                      : "text-[var(--text-ink2)] hover:text-[var(--text-ink)]"
+                  }`}
+                >
+                  <Users className="w-3 h-3" />
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Actions: Live Timer Pill + Export CSV + New Ticket */}
+        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2">
+          {runningTicket && (
             <button
-              onClick={() => setActiveTab('team-logs')}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'team-logs' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}
+              type="button"
+              onClick={() => openTicketDrawer(runningTicket)}
+              className="inline-flex items-center gap-1.5 font-mono-code text-[10.5px] font-bold px-3 py-1.5 rounded-full bg-[var(--ok-bg)] border border-[var(--ok-stroke)] text-[var(--ok)] tnum cursor-pointer"
             >
-              Team Logs
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--ok)] animate-pulse" />
+              <span>
+                {formatDurationCompact(computeTicketLoggedSeconds(runningTicket.timeLogs, nowMs))} ·{" "}
+                {runningTicket.taskName.slice(0, 18)}
+              </span>
             </button>
           )}
-        </div>
-        
-        <button
-          onClick={handleExportCSV}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5" /> Export to CSV
-        </button>
-      </div>
 
-      {/* Filter Bar */}
-      {/* Filter Bar */}
-      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 bg-white p-3 rounded-xl border border-gray-200/60 shadow-sm">
-        <span className="hidden md:inline text-xs font-bold text-gray-500 uppercase tracking-wider ml-1 mr-2">Filters:</span>
-        
-        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 w-full md:w-auto">
-          {activeTab === 'team-logs' && (
-            <CustomSelect
-              value={filters.user}
-              onChange={(value) => setFilters({...filters, user: value})}
-              options={[
-                { value: 'all', label: 'All Users' },
-                ...uniqueUsers.map((u: any) => ({ value: u.id, label: u.name }))
-              ]}
-              className="w-full md:w-36"
-            />
-          )}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-canvas)] hover:border-[var(--brand)] text-xs font-semibold text-[var(--text-ink)] cursor-pointer whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{t.support.exportCsv}</span>
+            </button>
 
-          <CustomSelect
-            value={filters.module}
-            onChange={(value) => setFilters({...filters, module: value})}
-            options={[
-              { value: 'all', label: 'All Modules' },
-              ...uniqueModules.map((m: any) => ({ value: m, label: m }))
-            ]}
-            className="w-full md:w-36"
-          />
-
-          <CustomSelect
-            value={filters.category}
-            onChange={(value) => setFilters({...filters, category: value})}
-            options={[
-              { value: 'all', label: 'All Categories' },
-              ...uniqueCategories.map((c: any) => ({ value: c, label: c }))
-            ]}
-            className="w-full md:w-40"
-          />
-
-          <CustomSelect
-            value={filters.status}
-            onChange={(value) => setFilters({...filters, status: value})}
-            options={[
-              { value: 'all', label: 'All Status' },
-              { value: 'Done', label: 'Done' },
-              { value: 'Ongoing', label: 'Ongoing' },
-              { value: 'Suspended', label: 'Suspended' },
-              { value: 'Not Started', label: 'Not Started' }
-            ]}
-            className="w-full md:w-32"
-          />
-        </div>
-
-        <div className="relative">
-          <DatePicker 
-            selected={filters.date} 
-            onChange={(date: Date | null) => setFilters({...filters, date})} 
-            dateFormat="dd MMM yyyy" 
-            placeholderText="Filter by Date"
-            isClearable
-            className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 w-32"
-          />
-        </div>
-
-        {(filters.user !== 'all' || filters.module !== 'all' || filters.category !== 'all' || filters.status !== 'all' || filters.date !== null) && (
-          <button 
-            onClick={() => setFilters({user: 'all', module: 'all', category: 'all', status: 'all', date: null})}
-            className="ml-auto text-[10px] font-bold text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1.5 rounded-md transition-colors"
-          >
-            Clear Filters
-          </button>
-        )}
-      </div>
-
-      <div className="overflow-hidden flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200/60">
-        <div className="overflow-x-auto flex-1 flex flex-col bg-gray-50 md:bg-transparent">
-          <div className="md:min-w-[1400px] flex-1 flex flex-col p-2 md:p-0">
-            {/* Table Header */}
-          <div className="hidden md:grid gap-3 px-4 py-3.5 border-b-2 border-gray-200 bg-gray-50/90 text-[11px] uppercase tracking-wider font-bold text-gray-500 select-none sticky top-0 z-10 md:grid-cols-[1fr_1fr_1.2fr_1.2fr_1.5fr_1fr_1fr_2fr_2fr_1fr_1fr_1.2fr]">
-            <div>Start Time</div>
-            <div>End Time</div>
-            <div>Requester</div>
-            <div>Executor</div>
-            <div>Task Name</div>
-            <div>Category</div>
-            <div>Module</div>
-            <div>Issue</div>
-            <div>Solution</div>
-            <div>Status</div>
-            <div>Priority</div>
-            <div className="text-right"></div>
+            <button
+              type="button"
+              onClick={() =>
+                openCreateDrawer(viewMode === "daily" ? "DAILY_ACTIVITY" : "REQUEST")
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{viewMode === "daily" ? t.support.newLog : t.support.newTicket}</span>
+            </button>
           </div>
-          
-          {/* Table Body */}
-          <div className="flex-1 bg-white">
-            {!addingTicket && (
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-dashed border-gray-200 hover:bg-blue-50/40 cursor-pointer text-gray-400 hover:text-blue-600 transition-all group"
-                onClick={() => setAddingTicket(true)}>
-                <div className="flex items-center gap-2 text-xs font-medium">
-                  <div className="p-1 rounded-md bg-blue-50 text-blue-500 group-hover:bg-blue-100 transition-colors"><Plus className="w-3.5 h-3.5" /></div>
-                  Add New Support Log
-                </div>
-              </div>
+        </div>
+      </section>
+
+      {/* 2. Enterprise Telemetry Strip (4 KPI Cards) */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.support.kpiOpenQueue}
+            </span>
+            <Headset className="w-4 h-4 text-[var(--brand)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiSummary.openReqCount}
+            </span>
+            {kpiSummary.urgentOpen > 0 && (
+              <span className="font-mono-code text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--err-bg)] border border-[var(--err-stroke)] text-[var(--err)] tnum">
+                {kpiSummary.urgentOpen} URGENT
+              </span>
             )}
-            
-            {displayedTickets.length > 0 ? (
-              displayedTickets.map((ticket, i) => (
-                <div key={ticket.id} onClick={() => openEditModal(ticket)} className={`flex flex-col md:grid gap-3 p-4 md:px-4 md:py-3 hover:bg-blue-50/30 transition-colors duration-150 border-b cursor-pointer ${i % 2 === 0 ? 'bg-white shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80' : 'bg-gray-50 md:bg-gray-50/20 shadow-sm md:shadow-none mb-3 md:mb-0 rounded-lg md:rounded-none md:border-gray-100/80'} md:items-center md:grid-cols-[1fr_1fr_1.2fr_1.2fr_1.5fr_1fr_1fr_2fr_2fr_1fr_1fr_1.2fr] group relative`}>
-                  
-                  <div className="text-xs text-gray-700 tabular-nums min-w-0 flex items-center justify-between md:justify-start">
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Start Time</span>
-                    {formatDate(ticket.startDate)}
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.support.kpiSlaHealth}
+            </span>
+            <ShieldCheck className="w-4 h-4 text-[var(--ok)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiSummary.slaRate}%
+            </span>
+            {(kpiSummary.breachedCount > 0 || kpiSummary.atRiskCount > 0) && (
+              <span className="font-mono-code text-[10px] font-bold text-[var(--err)] tnum">
+                {kpiSummary.breachedCount} breach · {kpiSummary.atRiskCount} risk
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.support.kpiDailyActivity}
+            </span>
+            <Activity className="w-4 h-4 text-[var(--info)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiSummary.dailyCount}
+            </span>
+            <span className="font-mono-code text-[10.5px] font-semibold text-[var(--text-muted)] tnum">
+              · {formatDurationCompact(kpiSummary.dailySeconds)}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.support.kpiAvgMttr}
+            </span>
+            <Clock className="w-4 h-4 text-[var(--warn)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiSummary.resolvedCount > 0 ? formatCompactMinutes(kpiSummary.avgMttrMinutes) : "—"}
+            </span>
+            <span className="font-mono-code text-[10px] text-[var(--text-muted)] tnum">
+              {kpiSummary.resolvedCount} solved
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Filter Toolbar */}
+      <section className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 space-y-2.5">
+        <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto lg:flex-1">
+            <div className="relative flex-1 min-w-0 sm:min-w-[190px] lg:max-w-xs">
+              <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.support.searchPlaceholder}
+                className="w-full pl-8 pr-3 py-1.5 rounded-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-ink)] focus:outline-none focus:border-[var(--brand)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 sm:inline-flex items-center bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-full p-0.5 gap-0.5 w-full sm:w-auto shrink-0">
+              {(
+                [
+                  { id: "all", label: t.support.slaFilterAll },
+                  { id: "alert", label: t.support.slaFilterAlert },
+                  { id: "urgent", label: t.support.slaFilterUrgent },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSlaFilter(opt.id)}
+                  className={`px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[10.5px] font-semibold transition-colors cursor-pointer whitespace-nowrap truncate text-center ${
+                    slaFilter === opt.id
+                      ? "bg-[var(--bg-surface)] text-[var(--brand)] shadow-2xs"
+                      : "text-[var(--text-ink2)] hover:text-[var(--text-ink)]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto">
+            {canViewTeam && effectiveScope === "team" && (
+              <ThemedSelect
+                value={userFilter}
+                onChange={setUserFilter}
+                options={[
+                  { value: "all", label: t.support.allUsers },
+                  ...systemUsers.map((u) => ({ value: u.id, label: u.name })),
+                ]}
+                className="w-full sm:w-auto sm:min-w-[140px]"
+              />
+            )}
+
+            <ThemedSelect
+              value={moduleFilter}
+              onChange={setModuleFilter}
+              options={moduleFilterOptions}
+              className="w-full sm:w-auto sm:min-w-[155px]"
+            />
+
+            <ThemedSelect
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={categoryFilterOptions}
+              className="w-full sm:w-auto sm:min-w-[155px]"
+            />
+
+            <ThemedSelect
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: t.support.allStatuses },
+                { value: "Not Started", label: "Not Started" },
+                { value: "Ongoing", label: "Ongoing" },
+                { value: "Suspended", label: "Suspended" },
+                { value: "Done", label: "Done" },
+              ]}
+              className="w-full sm:w-auto sm:min-w-[130px]"
+            />
+
+            <ThemedDatePicker
+              value={dateFilter}
+              onChange={setDateFilter}
+              locale={locale}
+              placeholder={t.support.filterDatePlaceholder}
+              className="col-span-2 sm:col-span-1 w-full sm:w-44"
+              menuAlign="right"
+            />
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="col-span-2 sm:col-span-1 px-3 py-1.5 rounded-full bg-[var(--err-bg)] border border-[var(--err-stroke)] text-[var(--err)] text-[11px] font-semibold cursor-pointer whitespace-nowrap text-center"
+              >
+                {t.support.clearFilters}
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Desktop / Tablet Table View */}
+      <section className="hidden md:block bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
+        {visibleTickets.length === 0 ? (
+          <div className="py-16 px-4 text-center space-y-2">
+            <Headset className="w-9 h-9 text-[var(--text-muted)] mx-auto" />
+            <p className="font-heading font-bold text-sm text-[var(--text-ink)]">
+              {t.support.emptyTitle}
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">{t.support.emptyDesc}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1060px] text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-canvas)]/70 font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  <th className="py-3 px-3.5">{t.support.colTicketMode}</th>
+                  <th className="py-3 px-3">{t.support.colSubjectContext}</th>
+                  <th className="py-3 px-3">{t.support.colModuleCategory}</th>
+                  <th className="py-3 px-3">{t.support.colRequesterStaff}</th>
+                  <th className="py-3 px-3">{t.support.colScheduleSla}</th>
+                  <th className="py-3 px-3">{t.support.colStatusPriority}</th>
+                  <th className="py-3 px-3.5 text-right">{t.common.actions}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-subtle)]">
+                {visibleTickets.map((tk) => {
+                  const isRunningHere = (tk.timeLogs || []).some(
+                    (l) => !l.endTime && l.userId === currentUser.id
+                  );
+                  const unread = Boolean(
+                    tk.comments?.[0] &&
+                      (!tk.commentReadStatuses?.[0] ||
+                        new Date(tk.comments[0].createdAt) >
+                          new Date(tk.commentReadStatuses[0].lastReadAt))
+                  );
+                  const loggedSecs = computeTicketLoggedSeconds(tk.timeLogs, nowMs);
+                  const cleanIssue = stripRichHtml(tk.issue);
+
+                  return (
+                    <tr
+                      key={tk.id}
+                      onClick={() => openTicketDrawer(tk)}
+                      className="hover:bg-[var(--bg-canvas)]/70 transition-colors cursor-pointer align-top"
+                    >
+                      <td className="py-3 px-3.5 min-w-[132px]">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-mono-code text-[11px] font-bold text-[var(--text-ink)] tnum whitespace-nowrap">
+                            {tk.ticketNumber || tk.id.slice(0, 8)}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span
+                              className={`font-mono-code text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                tk.ticketType === "REQUEST"
+                                  ? "bg-[var(--brand-tint)] border-[var(--brand-stroke)] text-[var(--brand)]"
+                                  : "bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                              }`}
+                            >
+                              {tk.ticketType === "REQUEST" ? "REQ" : "DAILY"}
+                            </span>
+                            {tk.sourceType && tk.sourceType !== "MANUAL" && (
+                              <span className="font-mono-code text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--info-bg)] text-[var(--info)]">
+                                {tk.sourceType}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 max-w-[300px]">
+                        <p className="font-semibold text-xs text-[var(--text-ink)] line-clamp-1">
+                          {tk.taskName}
+                        </p>
+                        {cleanIssue && (
+                          <p className="text-[11px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
+                            {cleanIssue}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {tk.area && (
+                            <span className="inline-flex items-center gap-0.5 font-mono-code text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-[var(--bg-subtle)] text-[var(--text-ink2)]">
+                              <MapPin className="w-2.5 h-2.5" /> {tk.area}
+                            </span>
+                          )}
+                          {tk.asset && (
+                            <span className="inline-flex items-center gap-0.5 font-mono-code text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-[var(--bg-subtle)] text-[var(--text-ink2)]">
+                              <Box className="w-2.5 h-2.5" /> {tk.asset.assetCode}
+                            </span>
+                          )}
+                          {tk.promotedTasks && tk.promotedTasks.length > 0 && (
+                            <Link
+                              href={
+                                tk.promotedTasks[0].project
+                                  ? `/projects?projectId=${tk.promotedTasks[0].project.id}`
+                                  : "/projects"
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-0.5 font-mono-code text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--brand-tint)] text-[var(--brand)] hover:underline"
+                            >
+                              <FolderKanban className="w-2.5 h-2.5" />
+                              {t.support.promotedBadge}
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 w-[170px]">
+                        <p className="text-xs font-semibold text-[var(--text-ink)] line-clamp-1">
+                          {tk.module}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
+                          {tk.supportType}
+                        </p>
+                      </td>
+
+                      <td className="py-3 px-3 w-[170px]">
+                        <p className="text-xs font-medium text-[var(--text-ink)] line-clamp-1">
+                          {tk.requesterName || tk.user?.name || "-"}
+                        </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          {(tk.executors || []).slice(0, 3).map((ex) => (
+                            <span
+                              key={ex.id}
+                              title={ex.name}
+                              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--brand-tint)] border border-[var(--brand-stroke)] text-[9px] font-bold text-[var(--brand)] overflow-hidden"
+                            >
+                              {ex.photo ? (
+                                <Image
+                                  src={ex.photo}
+                                  alt={ex.name}
+                                  width={20}
+                                  height={20}
+                                  unoptimized
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                ex.name.charAt(0).toUpperCase()
+                              )}
+                            </span>
+                          ))}
+                          <span className="text-[11px] text-[var(--text-ink2)] truncate">
+                            {tk.ticketType === "REQUEST"
+                              ? (tk.executors || []).map((e) => e.name).join(", ") || "Unassigned"
+                              : tk.user?.name || "-"}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 w-[165px]">
+                        <p className="font-mono-code text-[11px] text-[var(--text-ink)] tnum">
+                          {format(new Date(tk.startDate), "dd MMM HH:mm")}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {renderSlaBadge(tk)}
+                          {loggedSecs > 0 && (
+                            <span className="font-mono-code text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-[var(--bg-subtle)] text-[var(--text-ink2)] tnum">
+                              {formatDurationCompact(loggedSecs)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 w-[125px]">
+                        <div className="flex flex-col items-start gap-1">
+                          {renderStatusPill(tk.status)}
+                          {renderPriorityPill(tk.priority)}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3.5 text-right w-[135px]">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => handleQuickTimer(tk, e)}
+                            disabled={timerBusyId === tk.id}
+                            title={isRunningHere ? t.projects.pauseTimer : t.projects.startTimer}
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                              isRunningHere
+                                ? "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]"
+                                : "bg-[var(--bg-canvas)] border-[var(--border-subtle)] text-[var(--text-ink2)] hover:border-[var(--brand)]"
+                            }`}
+                          >
+                            {isRunningHere ? (
+                              <Pause className="w-3.5 h-3.5" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {tk.status !== "Done" && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleQuickRemind(tk, e)}
+                              disabled={remindingId === tk.id}
+                              title={t.support.remindTelegram}
+                              className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] hover:border-[var(--brand)] cursor-pointer"
+                            >
+                              {remindingId === tk.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Bell className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCommentTicket({ id: tk.id, title: tk.taskName });
+                            }}
+                            title={t.projects.commentsLabel}
+                            className="relative p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] hover:border-[var(--brand)] cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            {unread && (
+                              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--brand)]" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(tk);
+                            }}
+                            title="Delete"
+                            className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--err)] hover:border-[var(--err-stroke)] cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* 5. Mobile (< md) Card List */}
+      <section className="md:hidden space-y-2.5">
+        {visibleTickets.length === 0 ? (
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl py-12 px-4 text-center space-y-2">
+            <Headset className="w-8 h-8 text-[var(--text-muted)] mx-auto" />
+            <p className="font-heading font-bold text-sm text-[var(--text-ink)]">
+              {t.support.emptyTitle}
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">{t.support.emptyDesc}</p>
+          </div>
+        ) : (
+          visibleTickets.map((tk) => {
+            const isRunningHere = (tk.timeLogs || []).some(
+              (l) => !l.endTime && l.userId === currentUser.id
+            );
+            const cleanIssue = stripRichHtml(tk.issue);
+
+            return (
+              <div
+                key={tk.id}
+                onClick={() => openTicketDrawer(tk)}
+                className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 space-y-2 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono-code text-[10.5px] font-bold text-[var(--text-ink2)] tnum">
+                      {tk.ticketNumber || tk.id.slice(0, 8)}
+                    </span>
+                    <span
+                      className={`font-mono-code text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                        tk.ticketType === "REQUEST"
+                          ? "bg-[var(--brand-tint)] border-[var(--brand-stroke)] text-[var(--brand)]"
+                          : "bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                      }`}
+                    >
+                      {tk.ticketType === "REQUEST" ? "REQ" : "DAILY"}
+                    </span>
+                    {renderSlaBadge(tk)}
                   </div>
-                  <div className="text-xs text-gray-700 tabular-nums min-w-0 flex items-center justify-between md:justify-start">
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">End Time</span>
-                    {formatDate(ticket.endDate)}
-                  </div>
-                  
-                  <div className="text-xs min-w-0 flex items-center justify-between md:block">
-                      <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Requester</span>
-                      <div className="text-right md:text-left">
-                        <div className="font-semibold text-gray-800 text-[11px] truncate" title={ticket.requesterName || ticket.user?.name || "-"}>{ticket.requesterName || ticket.user?.name || "-"}</div>
-                        {!ticket.requesterName && <div className="text-[10px] text-gray-500 truncate" title={ticket.user?.jobDesk || "-"}>{ticket.user?.jobDesk || "-"}</div>}
-                      </div>
-                  </div>
-                  <div className="text-xs min-w-0 flex items-center justify-between md:block">
-                      <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Executor</span>
-                      <div className="font-semibold text-blue-700 text-[11px] truncate text-right md:text-left">
-                        {ticket.ticketType === "REQUEST" 
-                          ? (ticket.executors?.map((e:any) => e.name).join(", ") || "Belum ditentukan") 
-                          : (ticket.user?.name || "-")}
-                      </div>
-                  </div>
-                  
-                  <div className="font-medium text-gray-800 text-sm md:text-xs min-w-0 flex flex-col md:flex-row items-start md:items-center gap-1.5 order-first md:order-none mb-2 md:mb-0">
-                    <div className="flex items-center gap-1.5 w-full pr-16 md:pr-0 min-w-0">
-                      {ticket.ticketType === "REQUEST" && (
-                        <span className="shrink-0 inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold tracking-wider">REQ</span>
-                      )}
-                      <span className="block truncate" title={ticket.taskName || "-"}>{ticket.taskName || "-"}</span>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.supportType || "-"}>
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Category</span>
-                    <span className="block truncate">{ticket.supportType || "-"}</span>
-                  </div>
-                  <div className="text-xs text-gray-700 min-w-0 truncate flex items-center justify-between md:block" title={ticket.module || "-"}>
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Module</span>
-                    <span className="block truncate">{ticket.module || "-"}</span>
-                  </div>
-                  <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.issue)}>
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Issue</span>
-                    <span className="block truncate">{cleanHtmlText(ticket.issue).substring(0, 100) + (cleanHtmlText(ticket.issue).length > 100 ? "..." : "")}</span>
-                  </div>
-                  <div className="text-xs text-gray-700 min-w-0 flex flex-col md:block" title={cleanHtmlText(ticket.solution)}>
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 mt-1">Solution</span>
-                    <span className="block truncate">{cleanHtmlText(ticket.solution).substring(0, 100) + (cleanHtmlText(ticket.solution).length > 100 ? "..." : "")}</span>
-                  </div>
-                  <div className="min-w-0 flex items-center justify-between md:block mt-2 md:mt-0 pt-3 md:pt-0 border-t border-gray-100 md:border-0">
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Status</span>
-                    {renderStatus(ticket.status)}
-                  </div>
-                  <div className="min-w-0 flex items-center justify-between md:block">
-                    <span className="md:hidden text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Priority</span>
-                    {renderPriority(ticket.priority)}
+                  {renderPriorityPill(tk.priority)}
+                </div>
+
+                <p className="font-semibold text-sm text-[var(--text-ink)] line-clamp-2">
+                  {tk.taskName}
+                </p>
+
+                {cleanIssue && (
+                  <p className="text-xs text-[var(--text-muted)] line-clamp-2">{cleanIssue}</p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-ink2)]">
+                  <span className="font-semibold">{tk.module}</span>
+                  <span>·</span>
+                  <span>{tk.supportType}</span>
+                  {tk.area && (
+                    <>
+                      <span>·</span>
+                      <span className="font-mono-code text-[10px]">{tk.area}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {renderStatusPill(tk.status)}
+                    <span className="font-mono-code text-[10px] text-[var(--text-muted)] truncate tnum">
+                      {format(new Date(tk.startDate), "dd MMM HH:mm")}
+                    </span>
                   </div>
 
-                  <div className="flex justify-end gap-1 opacity-100 min-w-0 absolute md:relative top-2 right-2 md:top-auto md:right-auto">
-                    {['Ongoing', 'Not Started'].includes(ticket.status) && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleRemind(ticket); }} 
-                        className="p-1.5 bg-yellow-50 md:bg-yellow-50/50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all relative" 
-                        title="Kirim Pengingat Telegram"
-                        disabled={remindingTicketId === ticket.id}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleQuickTimer(tk, e)}
+                      disabled={timerBusyId === tk.id}
+                      aria-label={isRunningHere ? t.projects.pauseTimer : t.projects.startTimer}
+                      className={`p-1.5 rounded-lg border cursor-pointer ${
+                        isRunningHere
+                          ? "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]"
+                          : "bg-[var(--bg-canvas)] border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                      }`}
+                    >
+                      {isRunningHere ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
+                    {tk.status !== "Done" && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleQuickRemind(tk, e)}
+                        disabled={remindingId === tk.id}
+                        aria-label={t.support.remindTelegram}
+                        className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
                       >
-                        {remindingTicketId === ticket.id ? (
-                          <Loader2 className="w-4 h-4 md:w-3.5 md:h-3.5 animate-spin" />
+                        {remindingId === tk.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
-                          <Bell className="w-4 h-4 md:w-3.5 md:h-3.5" />
+                          <Bell className="w-3.5 h-3.5" />
                         )}
                       </button>
                     )}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setActiveCommentTicket({id: ticket.id, title: ticket.taskName}); }} 
-                      className="p-1.5 bg-indigo-50 md:bg-indigo-50/50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-all relative" 
-                      title="Diskusi Ticket"
-                    >
-                      <MessageSquare className="w-4 h-4 md:w-3.5 md:h-3.5" />
-                      {ticket.comments?.[0] && (!ticket.commentReadStatuses?.[0] || new Date(ticket.comments[0].createdAt) > new Date(ticket.commentReadStatuses[0].lastReadAt)) && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
-                      )}
-                    </button>
-                    <button onClick={(e) => handleDeleteTicket(ticket.id, e)} className="p-1.5 bg-red-50 md:bg-red-50/50 text-red-500 rounded-lg hover:bg-red-100 transition-all" title="Delete Log">
-                      <Trash2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center text-gray-500 py-20">
-                <div className="p-5 bg-gray-50 rounded-2xl mb-4"><Table2 className="w-10 h-10 text-gray-300" /></div>
-                <p className="font-semibold text-gray-600 text-lg">No support logs yet</p>
-                <p className="text-sm text-gray-400 mt-1">Click "+ Add New Support Log" above to start tracking.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Add Ticket Modal */}
-      {addingTicket && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold">New Support Log</h3>
-                <p className="text-blue-100 text-xs">Record daily IT support activity</p>
-              </div>
-              <button onClick={() => setAddingTicket(false)} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="space-y-4">
-                <div className="flex gap-4 p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
-                    <input type="radio" name="ticketType" value="DAILY_ACTIVITY" 
-                      checked={newTaskData.ticketType === "DAILY_ACTIVITY"} 
-                      onChange={() => setNewTaskData({...newTaskData, ticketType: "DAILY_ACTIVITY"})} 
-                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
-                    📝 Kegiatan Harian IT (Daily Log)
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
-                    <input type="radio" name="ticketType" value="REQUEST" 
-                      checked={newTaskData.ticketType === "REQUEST"} 
-                      onChange={() => setNewTaskData({...newTaskData, ticketType: "REQUEST"})} 
-                      className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                    🆘 Permintaan Bantuan (Request)
-                  </label>
-                </div>
-
-                {newTaskData.ticketType === "REQUEST" && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
-                    <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
-                      value={newTaskData.requesterName} onChange={(e) => setNewTaskData({...newTaskData, requesterName: e.target.value})} />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan / Kendala) <span className="text-red-500">*</span></label>
-                  <input autoFocus={newTaskData.ticketType !== "REQUEST"} type="text" placeholder={newTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
-                    value={newTaskData.taskName} onChange={(e) => setNewTaskData({...newTaskData, taskName: e.target.value})}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddTicket(); if (e.key === 'Escape') setAddingTicket(false); }} />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Module</label>
-                    <select 
-                      className={inputClass}
-                      value={newTaskData.module}
-                      onChange={(e) => {
-                        const newModule = e.target.value;
-                        const validCategories = CATEGORY_MAP[newModule] || ["Lainnya..."];
-                        setNewTaskData({
-                           ...newTaskData, 
-                           module: newModule, 
-                           supportType: validCategories[0]
-                        });
-                      }}
-                    >
-                      {MODULE_GROUPS.map(group => (
-                        <optgroup key={group.label} label={group.label}>
-                          {group.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                    {newTaskData.module === "General IT / Lainnya..." && (
-                      <input type="text" placeholder="Specify module..." className={`${inputClass} mt-2`}
-                        value={newTaskData.customModule} onChange={(e) => setNewTaskData({...newTaskData, customModule: e.target.value})} />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                    <select
-                      className={inputClass}
-                      value={newTaskData.supportType}
-                      onChange={(e) => setNewTaskData({...newTaskData, supportType: e.target.value})}
-                    >
-                      {(CATEGORY_MAP[newTaskData.module] || ["Lainnya..."]).map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {newTaskData.ticketType === "REQUEST" && (
-                  <div className="space-y-4">
-                    {newTaskData.supportType === "Master Data" && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
-                        <select className={inputClass} value={newTaskData.area || ""} onChange={(e) => {
-                          const selectedArea = e.target.value;
-                          const autoAssignedIds = systemUsers.filter((u: any) => u.handledAreas?.includes(selectedArea)).map((u: any) => u.id);
-                          setNewTaskData({...newTaskData, area: selectedArea, executorIds: autoAssignedIds});
-                        }}>
-                          <option value="" disabled>Pilih Area...</option>
-                          {AVAILABLE_AREAS.map(area => (
-                            <option key={area} value={area}>{area}</option>
-                          ))}
-                        </select>
-                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini. (Anda bisa menyesuaikan di bawah jika perlu)</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                        {systemUsers.map(u => (
-                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                            <input type="checkbox" checked={newTaskData.executorIds.includes(u.id)} 
-                              onChange={(e) => {
-                                const newIds = e.target.checked 
-                                  ? [...newTaskData.executorIds, u.id] 
-                                  : newTaskData.executorIds.filter(id => id !== u.id);
-                                setNewTaskData({...newTaskData, executorIds: newIds});
-                              }}
-                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Start Time</label>
-                    <DatePicker selected={newTaskData.startDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, startDate: date})} 
-                      showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" className={inputClass} wrapperClassName="w-full" />
-                  </div>
-                  {newTaskData.ticketType === "DAILY_ACTIVITY" && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
-                      <DatePicker selected={newTaskData.endDate} onChange={(date: Date | null) => date && setNewTaskData({...newTaskData, endDate: date})} 
-                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={newTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
-                    </div>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Issue (Kendala)</label>
-                  <ReactQuill theme="snow" value={newTaskData.issue} onChange={(val) => setNewTaskData({...newTaskData, issue: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
-                </div>
-                
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Solution (Solusi)</label>
-                  <ReactQuill theme="snow" value={newTaskData.solution} onChange={(val) => setNewTaskData({...newTaskData, solution: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Link / Tautan Rujukan</label>
-                  <input type="url" placeholder="https://..." className={inputClass} value={newTaskData.link} onChange={(e) => setNewTaskData({...newTaskData, link: e.target.value})} />
-                </div>
-                
-                <div className={`grid ${newTaskData.ticketType === "REQUEST" ? "grid-cols-1" : "grid-cols-2"} gap-4`}>
-                  {newTaskData.ticketType !== "REQUEST" && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-                      <ModernSelect options={statusOptions} value={newTaskData.status} onChange={(val) => setNewTaskData({...newTaskData, status: val})} className="w-full" />
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
-                    <ModernSelect options={priorityOptions} value={newTaskData.priority} onChange={(val) => setNewTaskData({...newTaskData, priority: val})} className="w-full" />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Attachment (Bukti/Screenshot)</label>
-                  <div className="flex items-center gap-3">
-                    <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Paperclip className="w-3.5 h-3.5" /> Choose File
-                      <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, false)} accept="image/*,.pdf,.xlsx,.csv" />
-                    </label>
-                    {newTaskData.attachment && (
-                      <a href={newTaskData.attachment} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-[200px]">
-                        {newTaskData.attachment.split("/").pop()}
+                    {tk.link && (
+                      <a
+                        href={tk.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={t.support.referenceLinkLabel}
+                        className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCommentTicket({ id: tk.id, title: tk.taskName });
+                      }}
+                      aria-label={t.projects.commentsLabel}
+                      className="relative p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {tk.comments?.[0] &&
+                        (!tk.commentReadStatuses?.[0] ||
+                          new Date(tk.comments[0].createdAt) >
+                            new Date(tk.commentReadStatuses[0].lastReadAt)) && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--brand)]" />
+                        )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(tk);
+                      }}
+                      aria-label={t.common.delete}
+                      className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--err)] cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               </div>
+            );
+          })
+        )}
+      </section>
+
+      {/* Pagination Footer */}
+      {filteredTickets.length > visibleTickets.length && (
+        <div className="flex items-center justify-center pt-1">
+          <button
+            type="button"
+            onClick={() => setVisibleLimit((prev) => prev + PAGE_SIZE)}
+            className="px-5 py-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:border-[var(--brand)] text-xs font-semibold text-[var(--text-ink)] cursor-pointer tnum"
+          >
+            {t.support.showMore} ({visibleTickets.length} / {filteredTickets.length})
+          </button>
+        </div>
+      )}
+
+      {/* Create / Edit / Detail Drawer */}
+      <SupportTicketDrawer
+        isOpen={drawerOpen}
+        ticket={activeTicket}
+        defaultTicketType={drawerDefaultType}
+        modules={modules}
+        areas={areas}
+        assets={assets}
+        projects={projects}
+        slaPolicies={slaPolicies}
+        users={systemUsers}
+        onClose={() => {
+          setDrawerOpen(false);
+          setActiveTicketId(null);
+        }}
+        onSaved={refreshTickets}
+        onNotify={showToast}
+        onOpenComments={(tk) => setCommentTicket({ id: tk.id, title: tk.taskName })}
+      />
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl shadow-xl p-5 space-y-4">
+            <div className="space-y-1">
+              <h4 className="font-heading font-bold text-base text-[var(--text-ink)]">
+                {t.projects.confirmDeleteTitle}
+              </h4>
+              <p className="text-xs text-[var(--text-ink2)]">{t.support.deleteConfirm}</p>
+              <p className="text-xs font-semibold text-[var(--text-ink)] pt-1 truncate">
+                {deleteTarget.ticketNumber ? `${deleteTarget.ticketNumber} · ` : ""}
+                {deleteTarget.taskName}
+              </p>
             </div>
-            
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setAddingTicket(false)} className="px-5 py-2.5 text-sm text-gray-600 font-medium hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-all">
-                Cancel
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-canvas)] text-xs font-semibold text-[var(--text-ink2)] cursor-pointer"
+              >
+                {t.common.cancel}
               </button>
-              <button onClick={handleAddTicket} disabled={isSubmitting || !newTaskData.taskName.trim()}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 text-sm rounded-xl font-semibold hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50 disabled:hover:shadow-none">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Log
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[var(--err)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{t.common.delete}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Ticket Modal */}
-      {editingTicket && editTaskData && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold">Edit Support Log</h3>
-                <p className="text-blue-100 text-xs">Update your daily IT support activity</p>
-              </div>
-              <button onClick={() => { setEditingTicket(null); setEditTaskData(null); }} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="space-y-4">
-                <div className="flex gap-4 p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
-                    <input type="radio" name="editTicketType" value="DAILY_ACTIVITY" 
-                      checked={editTaskData.ticketType === "DAILY_ACTIVITY"} 
-                      onChange={() => setEditTaskData({...editTaskData, ticketType: "DAILY_ACTIVITY"})} 
-                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
-                    📝 Kegiatan Harian IT (Daily Log)
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
-                    <input type="radio" name="editTicketType" value="REQUEST" 
-                      checked={editTaskData.ticketType === "REQUEST"} 
-                      onChange={() => setEditTaskData({...editTaskData, ticketType: "REQUEST"})} 
-                      className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300" />
-                    🆘 Permintaan Bantuan (Request)
-                  </label>
-                </div>
-
-                {editTaskData.ticketType === "REQUEST" && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nama Pelapor (Requester) <span className="text-red-500">*</span></label>
-                    <input type="text" placeholder="Contoh: Bpk Ruddin (Finance)" className={inputClass}
-                      value={editTaskData.requesterName} onChange={(e) => setEditTaskData({...editTaskData, requesterName: e.target.value})} />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Task Name (Pekerjaan / Kendala) <span className="text-red-500">*</span></label>
-                  <input autoFocus={editTaskData.ticketType !== "REQUEST"} type="text" placeholder={editTaskData.ticketType === "REQUEST" ? "Kendala yang dilaporkan..." : "Pekerjaan yang dilakukan..."} className={inputClass}
-                    value={editTaskData.taskName} onChange={(e) => setEditTaskData({...editTaskData, taskName: e.target.value})}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateTicket(); if (e.key === 'Escape') { setEditingTicket(null); setEditTaskData(null); } }} />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Module</label>
-                    <select 
-                      className={inputClass}
-                      value={editTaskData.module}
-                      onChange={(e) => {
-                        const newModule = e.target.value;
-                        const validCategories = CATEGORY_MAP[newModule] || ["Lainnya..."];
-                        setEditTaskData({
-                           ...editTaskData, 
-                           module: newModule, 
-                           supportType: validCategories[0]
-                        });
-                      }}
-                    >
-                      {MODULE_GROUPS.map(group => (
-                        <optgroup key={group.label} label={group.label}>
-                          {group.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                    {editTaskData.module === "General IT / Lainnya..." && (
-                      <input type="text" placeholder="Specify module..." className={`${inputClass} mt-2`}
-                        value={editTaskData.customModule} onChange={(e) => setEditTaskData({...editTaskData, customModule: e.target.value})} />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                    <select
-                      className={inputClass}
-                      value={editTaskData.supportType}
-                      onChange={(e) => setEditTaskData({...editTaskData, supportType: e.target.value})}
-                    >
-                      {(CATEGORY_MAP[editTaskData.module] || ["Lainnya..."]).map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {editTaskData.ticketType === "REQUEST" && (
-                  <div className="space-y-4">
-                    {editTaskData.supportType === "Master Data" && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pilih Area <span className="text-red-500">*</span></label>
-                        <select className={inputClass} value={editTaskData.area || ""} onChange={(e) => {
-                          const selectedArea = e.target.value;
-                          const autoAssignedIds = systemUsers.filter((u: any) => u.handledAreas?.includes(selectedArea)).map((u: any) => u.id);
-                          setEditTaskData({...editTaskData, area: selectedArea, executorIds: autoAssignedIds});
-                        }}>
-                          <option value="" disabled>Pilih Area...</option>
-                          {AVAILABLE_AREAS.map(area => (
-                            <option key={area} value={area}>{area}</option>
-                          ))}
-                        </select>
-                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Executor akan di-assign otomatis berdasarkan area ini. (Anda bisa menyesuaikan di bawah jika perlu)</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tugaskan Kepada (Executors) <span className="text-red-500">*</span></label>
-                      <div className="flex flex-col gap-2 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50">
-                        {systemUsers.map(u => (
-                          <label key={u.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                            <input type="checkbox" checked={editTaskData.executorIds?.includes(u.id)} 
-                              onChange={(e) => {
-                                const newIds = e.target.checked 
-                                  ? [...(editTaskData.executorIds || []), u.id] 
-                                  : (editTaskData.executorIds || []).filter((id:string) => id !== u.id);
-                                setEditTaskData({...editTaskData, executorIds: newIds});
-                              }}
-                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                            {u.name} <span className="text-[10px] text-gray-400">({u.jobDesk})</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Start Time</label>
-                    <DatePicker selected={editTaskData.startDate} onChange={(date: Date | null) => date && setEditTaskData({...editTaskData, startDate: date})} 
-                      showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" className={inputClass} wrapperClassName="w-full" />
-                  </div>
-                  {editTaskData.ticketType === "DAILY_ACTIVITY" && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">End Time</label>
-                      <DatePicker selected={editTaskData.endDate} onChange={(date: Date | null) => date && setEditTaskData({...editTaskData, endDate: date})} 
-                        showTimeSelect timeFormat="HH:mm" timeIntervals={15} dateFormat="dd MMM yyyy, HH:mm" minDate={editTaskData.startDate} className={inputClass} wrapperClassName="w-full" />
-                    </div>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Issue (Kendala)</label>
-                  <ReactQuill theme="snow" value={editTaskData.issue || ""} onChange={(val) => setEditTaskData({...editTaskData, issue: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
-                </div>
-                
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Solution (Solusi)</label>
-                  <ReactQuill theme="snow" value={editTaskData.solution || ""} onChange={(val) => setEditTaskData({...editTaskData, solution: val})} className="bg-white rounded-lg [&_.ql-editor]:min-h-[100px]" />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Link / Tautan Rujukan</label>
-                  <input type="url" placeholder="https://..." className={inputClass} value={editTaskData.link || ""} onChange={(e) => setEditTaskData({...editTaskData, link: e.target.value})} />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-                    <ModernSelect options={statusOptions} value={editTaskData.status} onChange={(val) => setEditTaskData({...editTaskData, status: val})} className="w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
-                    <ModernSelect options={priorityOptions} value={editTaskData.priority} onChange={(val) => setEditTaskData({...editTaskData, priority: val})} className="w-full" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Attachment (Bukti/Screenshot)</label>
-                  <div className="flex items-center gap-3">
-                    <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-                      <Paperclip className="w-3.5 h-3.5" /> Choose File
-                      <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, true)} accept="image/*,.pdf,.xlsx,.csv" />
-                    </label>
-                    {editTaskData.attachment && (
-                      <a href={editTaskData.attachment} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-[200px]">
-                        {editTaskData.attachment.split("/").pop()}
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => { setEditingTicket(null); setEditTaskData(null); }} className="px-5 py-2.5 text-sm text-gray-600 font-medium hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-all">
-                Cancel
-              </button>
-              <button onClick={handleUpdateTicket} disabled={isSubmitting || !editTaskData.taskName.trim()}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 text-sm rounded-xl font-semibold hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50 disabled:hover:shadow-none">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeCommentTicket && (
-        <CommentsDrawer 
-          isOpen={!!activeCommentTicket} 
-          onClose={() => setActiveCommentTicket(null)} 
-          entityId={activeCommentTicket.id} 
-          entityType="supportTicket" 
-          entityTitle={activeCommentTicket.title} 
-          currentUserId={currentUser?.id} 
+      {/* Comments Drawer */}
+      {commentTicket && (
+        <CommentsDrawer
+          isOpen={!!commentTicket}
+          onClose={() => {
+            setCommentTicket(null);
+            refreshTickets();
+          }}
+          entityId={commentTicket.id}
+          entityType="supportTicket"
+          entityTitle={commentTicket.title}
+          currentUserId={currentUser.id}
         />
       )}
-    </div>
     </div>
   );
 }

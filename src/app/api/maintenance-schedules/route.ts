@@ -1,54 +1,70 @@
-import { isMaintenanceAdmin } from "@/lib/auth";
+import { Prisma, ScheduleStatus, ScheduleType } from "@prisma/client";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { isMaintenanceAdmin } from "@/lib/auth";
 
-// GET /api/maintenance-schedules — List schedules dengan filter (All authenticated)
+const SCHEDULE_INCLUDE = {
+  asset: {
+    select: {
+      id: true,
+      assetCode: true,
+      assetName: true,
+      location: true,
+      detailedLocation: true,
+      division: { select: { id: true, name: true } },
+      assetType: { select: { id: true, name: true } },
+    },
+  },
+  template: {
+    select: {
+      id: true,
+      templateName: true,
+      defaultFrequencyDays: true,
+      reminderOffsetDays: true,
+      checklistItems: { orderBy: { order: "asc" as const } },
+    },
+  },
+  assignedExecutors: { select: { id: true, name: true, photo: true } },
+  _count: { select: { logs: true } },
+};
+
+// GET /api/maintenance-schedules — List schedules with optional filters
 export async function GET(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const assetId = searchParams.get("assetId");
     const divisionId = searchParams.get("divisionId");
     const scheduleType = searchParams.get("scheduleType");
 
-    const where: any = {};
-
-    if (status) where.status = status;
+    const where: Prisma.MaintenanceScheduleWhereInput = {};
+    if (status && ["UPCOMING", "DUE", "OVERDUE", "DONE"].includes(status)) {
+      where.status = status as ScheduleStatus;
+    }
     if (assetId) where.assetId = assetId;
-    if (scheduleType) where.scheduleType = scheduleType;
+    if (scheduleType && ["RECURRING", "ADHOC"].includes(scheduleType)) {
+      where.scheduleType = scheduleType as ScheduleType;
+    }
     if (divisionId) {
       where.asset = { divisionId };
     }
 
-    // Staff hanya bisa lihat schedule yang di-assign ke mereka
-    if (!isMaintenanceAdmin(session)) {
+    if (!isMaintenanceAdmin(auth.user)) {
       where.assignedExecutors = {
-        some: { id: session.userId },
+        some: { id: auth.user.id },
       };
     }
 
     const schedules = await prisma.maintenanceSchedule.findMany({
       where,
       orderBy: { nextDueDate: "asc" },
-      include: {
-        asset: {
-          select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } },
-          include: { assetType: { select: { id: true, name: true } } },
-        },
-        template: { select: { id: true, templateName: true, defaultFrequencyDays: true } },
-        assignedExecutors: { select: { id: true, name: true } },
-        _count: { select: { logs: true } },
-      },
+      include: SCHEDULE_INCLUDE,
     });
 
     return NextResponse.json(schedules);
@@ -58,28 +74,29 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/maintenance-schedules — Create schedule (Admin: semua, Staff: ADHOC saja)
+// POST /api/maintenance-schedules — Create schedule (Admin: RECURRING/ADHOC, Staff: ADHOC)
 export async function POST(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await req.json();
     const { scheduleType, assetId, templateId, frequencyDays, nextDueDate, executorIds } = body;
 
-    // Staff hanya boleh buat ADHOC
-    if (!isMaintenanceAdmin(session) && scheduleType !== "ADHOC") {
-      return NextResponse.json({ error: "Staff hanya bisa membuat jadwal ad-hoc." }, { status: 403 });
+    if (!isMaintenanceAdmin(auth.user) && scheduleType !== "ADHOC") {
+      return NextResponse.json(
+        { error: "Staff hanya bisa membuat jadwal ad-hoc." },
+        { status: 403 }
+      );
     }
 
-    // Validasi field wajib
     if (!scheduleType || !["RECURRING", "ADHOC"].includes(scheduleType)) {
-      return NextResponse.json({ error: "scheduleType harus RECURRING atau ADHOC" }, { status: 400 });
+      return NextResponse.json(
+        { error: "scheduleType must be RECURRING or ADHOC" },
+        { status: 400 }
+      );
     }
     if (!assetId) {
       return NextResponse.json({ error: "assetId is required" }, { status: 400 });
@@ -87,73 +104,122 @@ export async function POST(req: Request) {
     if (!nextDueDate) {
       return NextResponse.json({ error: "nextDueDate is required" }, { status: 400 });
     }
+    const parsedDue = new Date(nextDueDate);
+    if (Number.isNaN(parsedDue.getTime())) {
+      return NextResponse.json({ error: "Invalid nextDueDate" }, { status: 400 });
+    }
     if (scheduleType === "RECURRING" && !templateId) {
-      return NextResponse.json({ error: "templateId is required for RECURRING schedules" }, { status: 400 });
+      return NextResponse.json(
+        { error: "templateId is required for RECURRING schedules" },
+        { status: 400 }
+      );
     }
 
-    // Ambil asset untuk dapatkan location (digunakan untuk auto-assign)
     const asset = await prisma.asset.findUnique({
-      where: { id: assetId },
-      select: { id: true, location: true, assetName: true },
+      where: { id: String(assetId) },
+      select: { id: true, location: true, detailedLocation: true, assetName: true },
     });
     if (!asset) {
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });
     }
 
-    // Resolve frequencyDays
-    let finalFrequencyDays = frequencyDays || null;
-    if (scheduleType === "RECURRING" && !finalFrequencyDays && templateId) {
-      const template = await prisma.maintenanceTemplate.findUnique({
-        where: { id: templateId },
-        select: { defaultFrequencyDays: true },
-      });
-      if (template) {
+    let finalFrequencyDays: number | null = null;
+    if (scheduleType === "RECURRING") {
+      if (frequencyDays !== undefined && frequencyDays !== null && frequencyDays !== "") {
+        const parsedFreq = Number(frequencyDays);
+        if (!Number.isInteger(parsedFreq) || parsedFreq < 1 || parsedFreq > 730) {
+          return NextResponse.json(
+            { error: "frequencyDays must be an integer between 1 and 730" },
+            { status: 400 }
+          );
+        }
+        finalFrequencyDays = parsedFreq;
+      } else if (templateId) {
+        const template = await prisma.maintenanceTemplate.findUnique({
+          where: { id: String(templateId) },
+          select: { defaultFrequencyDays: true },
+        });
+        if (!template) {
+          return NextResponse.json({ error: "Template not found" }, { status: 404 });
+        }
         finalFrequencyDays = template.defaultFrequencyDays;
+      }
+    } else if (templateId) {
+      const template = await prisma.maintenanceTemplate.findUnique({
+        where: { id: String(templateId) },
+        select: { id: true },
+      });
+      if (!template) {
+        return NextResponse.json({ error: "Template not found" }, { status: 404 });
       }
     }
 
-    // Auto-assign executors jika tidak disediakan
-    // Reuse logic dari modul Support: cari User yang handledAreas mengandung location asset
-    let finalExecutorIds = executorIds || [];
-    if (finalExecutorIds.length === 0 && asset.location) {
-      const locationExecutors = await prisma.user.findMany({
-        where: {
-          handledAreas: {
-            has: asset.location,
-          },
-        },
+    if (Array.isArray(executorIds) && executorIds.length > 0) {
+      const cleanIds = Array.from(
+        new Set(
+          executorIds.filter((eid: unknown): eid is string => typeof eid === "string" && eid.trim().length > 0)
+        )
+      );
+      const validUsers = await prisma.user.findMany({
+        where: { id: { in: cleanIds }, isActive: true },
         select: { id: true },
       });
-      finalExecutorIds = locationExecutors.map((u: { id: string }) => u.id);
+      if (validUsers.length !== cleanIds.length) {
+        return NextResponse.json(
+          { error: "One or more selected executors are invalid or inactive" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const rawExecutors: string[] = Array.isArray(executorIds)
+      ? Array.from(
+          new Set(
+            executorIds.filter(
+              (eid: unknown): eid is string => typeof eid === "string" && eid.trim().length > 0
+            )
+          )
+        )
+      : [];
+    let finalExecutorIds = rawExecutors;
+
+    if (finalExecutorIds.length === 0) {
+      const areaCandidates = [asset.detailedLocation, asset.location].filter(
+        (v): v is string => Boolean(v && v.trim())
+      );
+      if (areaCandidates.length > 0) {
+        const locationExecutors = await prisma.user.findMany({
+          where: {
+            isActive: true,
+            handledAreas: { hasSome: areaCandidates },
+          },
+          select: { id: true },
+        });
+        finalExecutorIds = locationExecutors.map((u) => u.id);
+      }
     }
 
     const schedule = await prisma.maintenanceSchedule.create({
       data: {
-        scheduleType,
-        assetId,
-        templateId: templateId || null,
+        scheduleType: scheduleType as ScheduleType,
+        assetId: asset.id,
+        templateId: templateId ? String(templateId) : null,
         frequencyDays: finalFrequencyDays,
-        nextDueDate: new Date(nextDueDate),
-        assignedExecutors: finalExecutorIds.length > 0
-          ? { connect: finalExecutorIds.map((id: string) => ({ id })) }
-          : undefined,
+        nextDueDate: parsedDue,
+        assignedExecutors:
+          finalExecutorIds.length > 0
+            ? { connect: finalExecutorIds.map((uid) => ({ id: uid })) }
+            : undefined,
       },
-      include: {
-        asset: {
-          select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } },
-        },
-        template: { select: { id: true, templateName: true } },
-        assignedExecutors: { select: { id: true, name: true } },
-      },
+      include: SCHEDULE_INCLUDE,
     });
 
-    // Buat notifikasi untuk setiap executor yang di-assign
     if (finalExecutorIds.length > 0) {
       await prisma.notification.createMany({
-        data: finalExecutorIds.map((userId: string) => ({
+        data: finalExecutorIds.map((userId) => ({
           userId,
           title: "Jadwal Maintenance Baru",
-          message: `Anda di-assign untuk maintenance "${asset.assetName}" pada ${new Date(nextDueDate).toLocaleDateString("id-ID")}.`,
+          message: `Anda ditugaskan untuk maintenance "${asset.assetName}" pada ${parsedDue.toLocaleDateString("id-ID")}.`,
           type: "ASSIGNMENT",
           link: `/maintenance/schedules/${schedule.id}`,
         })),

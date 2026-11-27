@@ -1,32 +1,25 @@
-import { isMaintenanceAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { requireActiveSession } from "@/lib/api-auth";
+import { isMaintenanceAdmin } from "@/lib/auth";
+import { logSettingsAudit } from "@/lib/settings-helpers";
 
-// GET /api/asset-types — List semua AssetType (All authenticated users)
 export async function GET() {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const assetTypes = await prisma.assetType.findMany({
       orderBy: { name: "asc" },
       include: {
         _count: {
-          select: {
-            assets: true,
-            templates: true,
-          },
+          select: { assets: true, templates: true },
         },
       },
     });
-
     return NextResponse.json(assetTypes);
   } catch (error) {
     console.error("Failed to fetch asset types:", error);
@@ -34,38 +27,43 @@ export async function GET() {
   }
 }
 
-// POST /api/asset-types — Create AssetType baru (Admin only)
 export async function POST(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isMaintenanceAdmin(auth.user)) {
+    return NextResponse.json({ error: "Forbidden. Only admins can create asset types." }, { status: 403 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isMaintenanceAdmin(session)) {
-      return NextResponse.json({ error: "Forbidden. Only admins can create asset types." }, { status: 403 });
-    }
-
     const body = await req.json();
-    const { name } = body;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const code = typeof body.code === "string" ? body.code.trim() || null : null;
 
-    if (!name || !name.trim()) {
+    if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
     const assetType = await prisma.assetType.create({
-      data: { name: name.trim() },
+      data: { name, code },
+      include: { _count: { select: { assets: true, templates: true } } },
+    });
+
+    await logSettingsAudit({
+      actorId: auth.user.id,
+      entityType: "AssetType",
+      entityId: assetType.id,
+      action: "CREATE",
+      diffJson: { name: assetType.name, code: assetType.code },
     });
 
     return NextResponse.json(assetType, { status: 201 });
-  } catch (error: any) {
-    console.error("Failed to create asset type:", error);
-    if (error.code === "P2002") {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "Asset type with this name already exists" }, { status: 400 });
     }
+    console.error("Failed to create asset type:", error);
     return NextResponse.json({ error: "Failed to create asset type" }, { status: 500 });
   }
 }

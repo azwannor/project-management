@@ -1,102 +1,183 @@
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import MaintenanceClient from "@/components/views/MaintenanceClient";
-import { Wrench } from "lucide-react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import prisma from "@/lib/prisma";
+import { requireActiveSession } from "@/lib/api-auth";
+import { generateAssetQrSvg } from "@/lib/qr";
+import MaintenanceClient, { type MaintTabId } from "@/components/views/MaintenanceClient";
 
-export default async function MaintenancePage() {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get("session")?.value;
-  const session = await decrypt(sessionCookie);
+export const dynamic = "force-dynamic";
 
-  if (!session || !session.userId) {
+const VALID_TABS = new Set<MaintTabId>(["assets", "qr", "schedules", "execute", "templates"]);
+
+export default async function MaintenancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; scheduleId?: string; assetId?: string }>;
+}) {
+  const auth = await requireActiveSession();
+  if (!auth) {
     redirect("/login");
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.userId as string },
-    select: { id: true, name: true, jobDesk: true, role: true, handledAreas: true }
-  });
+  const sp = await searchParams;
+  const rawTab = typeof sp.tab === "string" ? sp.tab : "assets";
+  const initialTab: MaintTabId = VALID_TABS.has(rawTab as MaintTabId)
+    ? (rawTab as MaintTabId)
+    : "assets";
+  const initialScheduleId = typeof sp.scheduleId === "string" ? sp.scheduleId : null;
+  const initialAssetId = typeof sp.assetId === "string" ? sp.assetId : null;
 
-  if (!currentUser) redirect("/login");
+  const [currentUserRecord, divisions, assetTypes, locations, assets, templates, schedules, logs, allUsers] =
+    await Promise.all([
+      prisma.user.findUnique({
+        where: { id: auth.user.id },
+        select: {
+          id: true,
+          name: true,
+          jobDesk: true,
+          role: true,
+          photo: true,
+          canManageMaintenance: true,
+          handledAreas: true,
+        },
+      }),
+      prisma.division.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { assets: true } } },
+      }),
+      prisma.assetType.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { assets: true, templates: true } } },
+      }),
+      prisma.location.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { assets: true } } },
+      }),
+      prisma.asset.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+          assetType: { select: { id: true, name: true } },
+          division: { select: { id: true, name: true } },
+          locationRef: { select: { id: true, name: true } },
+          pic: { select: { id: true, name: true, photo: true } },
+          custodyLogs: {
+            orderBy: { changedAt: "desc" },
+            take: 15,
+            include: { changedBy: { select: { id: true, name: true } } },
+          },
+          supportTickets: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: {
+              id: true,
+              ticketNumber: true,
+              taskName: true,
+              status: true,
+              priority: true,
+              createdAt: true,
+            },
+          },
+          _count: { select: { schedules: true, supportTickets: true, custodyLogs: true } },
+        },
+      }),
+      prisma.maintenanceTemplate.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+          assetType: { select: { id: true, name: true } },
+          checklistItems: { orderBy: { order: "asc" } },
+          _count: { select: { schedules: true } },
+        },
+      }),
+      prisma.maintenanceSchedule.findMany({
+        orderBy: { nextDueDate: "asc" },
+        include: {
+          asset: {
+            select: {
+              id: true,
+              assetCode: true,
+              assetName: true,
+              location: true,
+              detailedLocation: true,
+              division: { select: { id: true, name: true } },
+              assetType: { select: { id: true, name: true } },
+            },
+          },
+          template: {
+            select: {
+              id: true,
+              templateName: true,
+              defaultFrequencyDays: true,
+              reminderOffsetDays: true,
+              checklistItems: { orderBy: { order: "asc" } },
+            },
+          },
+          assignedExecutors: { select: { id: true, name: true, photo: true } },
+          _count: { select: { logs: true } },
+        },
+      }),
+      prisma.maintenanceLog.findMany({
+        orderBy: { executionDate: "desc" },
+        take: 50,
+        include: {
+          executedBy: { select: { id: true, name: true } },
+          supportTicket: { select: { id: true, ticketNumber: true, status: true } },
+          schedule: {
+            select: {
+              id: true,
+              scheduleType: true,
+              asset: {
+                select: {
+                  id: true,
+                  assetCode: true,
+                  assetName: true,
+                  location: true,
+                  division: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+          checklistResults: true,
+        },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, role: true, jobDesk: true, photo: true, handledAreas: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
 
-  const [divisions, assetTypes, assets, templates, schedules, logs, allUsers] = await Promise.all([
-    prisma.division.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { assets: true } } },
-    }),
-    prisma.assetType.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { assets: true, templates: true } } },
-    }),
-    prisma.asset.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        assetType: { select: { id: true, name: true } },
-        division: { select: { id: true, name: true } },
-        pic: { select: { id: true, name: true } },
-        _count: { select: { schedules: true } },
-      },
-    }),
-    prisma.maintenanceTemplate.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        assetType: { select: { id: true, name: true } },
-        checklistItems: { orderBy: { order: "asc" } },
-        _count: { select: { schedules: true } },
-      },
-    }),
-    prisma.maintenanceSchedule.findMany({
-      orderBy: { nextDueDate: "asc" },
-      include: {
-        asset: {
-          select: { 
-            id: true, 
-            assetCode: true, 
-            assetName: true, 
-            location: true,
-            division: { select: { id: true, name: true } },
-            assetType: { select: { id: true, name: true } }
-          },
-        },
-        template: { select: { id: true, templateName: true, defaultFrequencyDays: true, reminderOffsetDays: true, checklistItems: { orderBy: { order: "asc" } } } },
-        assignedExecutors: { select: { id: true, name: true } },
-        _count: { select: { logs: true } },
-      },
-    }),
-    prisma.maintenanceLog.findMany({
-      orderBy: { executionDate: "desc" },
-      take: 50,
-      include: {
-        executedBy: { select: { id: true, name: true } },
-        schedule: {
-          select: {
-            id: true, scheduleType: true,
-            asset: { select: { id: true, assetCode: true, assetName: true, location: true, division: { select: { id: true, name: true } } } },
-          },
-        },
-        checklistResults: true,
-      },
-    }),
-    prisma.user.findMany({
-      select: { id: true, name: true, role: true, jobDesk: true, handledAreas: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  if (!currentUserRecord) redirect("/login");
+
+  const hdrs = await headers();
+  const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
+  const proto = hdrs.get("x-forwarded-proto") || "http";
+  const origin = host ? `${proto}://${host}` : undefined;
+
+  const qrPairs = await Promise.all(
+    assets.map(async (a) => [a.id, await generateAssetQrSvg(a.assetCode, origin)] as const)
+  );
+  const qrSvgMap = Object.fromEntries(qrPairs);
+
+  const serializedAssets = assets.map((a) => ({
+    ...a,
+    purchasePrice: a.purchasePrice ? a.purchasePrice.toString() : null,
+  }));
 
   return (
-    <div className="flex-1 flex flex-col h-full p-4 md:p-6 overflow-hidden bg-slate-50">
-      <MaintenanceClient
-        currentUser={currentUser}
-        divisions={divisions}
-        assetTypes={assetTypes}
-        assets={assets}
-        templates={templates}
-        schedules={schedules}
-        logs={logs}
-        systemUsers={allUsers}
-      />
-    </div>
+    <MaintenanceClient
+      currentUser={currentUserRecord}
+      divisions={divisions}
+      assetTypes={assetTypes}
+      locations={locations}
+      assets={serializedAssets}
+      templates={templates}
+      schedules={schedules}
+      logs={logs}
+      systemUsers={allUsers}
+      qrSvgMap={qrSvgMap}
+      initialTab={initialTab}
+      initialScheduleId={initialScheduleId}
+      initialAssetId={initialAssetId}
+    />
   );
 }

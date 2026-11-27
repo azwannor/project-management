@@ -1,1171 +1,1400 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import {
-  Package, ClipboardList, CalendarClock, FileText, Plus, Search, Loader2,
-  Trash2, Save, X, Copy, ChevronDown, ChevronUp, GripVertical, CheckCircle2,
-  AlertTriangle, XCircle, Clock, AlertCircle, Eye, Upload, RotateCcw, UploadCloud, FileSpreadsheet, Bell
+  AlertTriangle,
+  Bell,
+  Box,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  Copy,
+  Edit3,
+  ExternalLink,
+  FileSpreadsheet,
+  History,
+  Loader2,
+  MapPin,
+  PackageX,
+  Plus,
+  QrCode,
+  Search,
+  ShieldAlert,
+  Ticket,
+  Trash2,
+  UserCheck,
+  Wrench,
+  X,
 } from "lucide-react";
-import ModernSelect from "../common/ModernSelect";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import { useI18n } from "@/i18n";
+import { ThemedSelect } from "@/components/ui/ThemedSelect";
+import {
+  ASSET_STATUS_VALUES,
+  computeScheduleUrgency,
+  computeWarrantyHealth,
+  resolveAssetHolder,
+  resolveAssetLocationLabel,
+} from "@/lib/maintenance-helpers";
+import AssetDetailDrawer from "./maintenance/AssetDetailDrawer";
+import QrCustodyView from "./maintenance/QrCustodyView";
+import ExecuteMaintenancePanel from "./maintenance/ExecuteMaintenancePanel";
+import {
+  ExcelImportModal,
+  ScheduleFormModal,
+  TemplateFormModal,
+} from "./maintenance/MaintenanceModals";
+import type {
+  AssetTypeOption,
+  DivisionOption,
+  EnterpriseAssetItem,
+  LocationOption,
+  MaintCurrentUser,
+  MaintUserOption,
+  MaintenanceLogItem,
+  MaintenanceScheduleItem,
+  MaintenanceTemplateItem,
+} from "./maintenance/types";
 
-const AVAILABLE_LOCATIONS = ["HO Jakarta", "HO Makassar", "Pabrik", "Marketing"];
+export type MaintTabId = "assets" | "qr" | "schedules" | "execute" | "templates";
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: "bg-green-100 text-green-700 border-green-200",
-  IN_REPAIR: "bg-amber-100 text-amber-700 border-amber-200",
-  INACTIVE: "bg-gray-100 text-gray-600 border-gray-200",
-  RETIRED: "bg-red-100 text-red-700 border-red-200",
-};
-
-const SCHEDULE_STATUS_COLORS: Record<string, string> = {
-  UPCOMING: "bg-blue-100 text-blue-700 border-blue-200",
-  DUE: "bg-amber-100 text-amber-700 border-amber-200",
-  OVERDUE: "bg-red-100 text-red-700 border-red-200",
-  DONE: "bg-green-100 text-green-700 border-green-200",
-};
-
-const CONDITION_COLORS: Record<string, string> = {
-  BAIK: "bg-green-100 text-green-700 border-green-200",
-  PERLU_PERHATIAN: "bg-amber-100 text-amber-700 border-amber-200",
-  BERMASALAH: "bg-red-100 text-red-700 border-red-200",
-};
-
-const CONDITION_LABELS: Record<string, string> = {
-  BAIK: "Good",
-  PERLU_PERHATIAN: "Needs Attention",
-  BERMASALAH: "Issue/Problem",
-};
-
-type Tab = "assets" | "templates" | "schedules" | "logs";
-
-export default function MaintenanceClient({
-  currentUser, divisions, assetTypes, assets: initialAssets, templates: initialTemplates,
-  schedules: initialSchedules, logs: initialLogs, systemUsers
-}: {
-  currentUser: any; divisions: any[]; assetTypes: any[]; assets: any[]; templates: any[];
-  schedules: any[]; logs: any[]; systemUsers: any[];
-}) {
-  const [activeTab, setActiveTab] = useState<Tab>("assets");
-  const router = useRouter();
-  const isAdmin = currentUser?.role === "Admin" || currentUser?.name?.toLowerCase().includes("dwi");
-
-  const tabs = [
-    { id: "assets" as Tab, label: "Asset Registry", icon: Package, count: initialAssets.length },
-    { id: "templates" as Tab, label: "Templates", icon: ClipboardList, count: initialTemplates.length, adminOnly: true },
-    { id: "schedules" as Tab, label: "Schedules", icon: CalendarClock, count: initialSchedules.filter((s: any) => s.status !== "DONE").length },
-    { id: "logs" as Tab, label: "Logs", icon: FileText, count: initialLogs.length },
-  ];
-
-  return (
-    <div className="flex flex-col gap-6">
-      {/* Tab Navigation */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200/60 pb-4">
-        {tabs.map(tab => {
-          if (tab.adminOnly && !isAdmin) return null;
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                isActive
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
-                  : "bg-white/60 text-gray-600 hover:bg-white/80 hover:text-gray-800 border border-gray-200/60"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-              <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
-              }`}>{tab.count}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === "assets" && (
-        <AssetTab assets={initialAssets} divisions={divisions} assetTypes={assetTypes} systemUsers={systemUsers} isAdmin={isAdmin} router={router} />
-      )}
-      {activeTab === "templates" && isAdmin && (
-        <TemplateTab templates={initialTemplates} assetTypes={assetTypes} router={router} />
-      )}
-      {activeTab === "schedules" && (
-        <ScheduleTab schedules={initialSchedules} assets={initialAssets} templates={initialTemplates} assetTypes={assetTypes} isAdmin={isAdmin} currentUser={currentUser} router={router} divisions={divisions} />
-      )}
-      {activeTab === "logs" && (
-        <LogTab logs={initialLogs} schedules={initialSchedules} currentUser={currentUser} isAdmin={isAdmin} router={router} />
-      )}
-    </div>
-  );
+interface MaintenanceClientProps {
+  currentUser: MaintCurrentUser;
+  divisions: DivisionOption[];
+  assetTypes: AssetTypeOption[];
+  locations: LocationOption[];
+  assets: EnterpriseAssetItem[];
+  templates: MaintenanceTemplateItem[];
+  schedules: MaintenanceScheduleItem[];
+  logs: MaintenanceLogItem[];
+  systemUsers: MaintUserOption[];
+  qrSvgMap: Record<string, string>;
+  initialTab?: MaintTabId;
+  initialScheduleId?: string | null;
+  initialAssetId?: string | null;
 }
 
-/* ============================================================
-   TAB 1: ASSET REGISTRY
-   ============================================================ */
-function AssetTab({ assets, divisions, assetTypes, systemUsers, isAdmin, router }: any) {
-  const [showDivisionModal, setShowDivisionModal] = useState(false);
-  const [newDivisionName, setNewDivisionName] = useState("");
-  const [isSubmittingDivision, setIsSubmittingDivision] = useState(false);
+export default function MaintenanceClient({
+  currentUser,
+  divisions,
+  assetTypes,
+  locations,
+  assets,
+  templates,
+  schedules,
+  logs,
+  systemUsers,
+  qrSvgMap,
+  initialTab = "assets",
+  initialScheduleId = null,
+  initialAssetId = null,
+}: MaintenanceClientProps) {
+  const { locale, t } = useI18n();
+  const router = useRouter();
+  const isAdmin = currentUser.canManageMaintenance || currentUser.role?.toLowerCase() === "admin";
 
-  const handleAddDivision = async () => {
-    if (!newDivisionName.trim()) return;
-    setIsSubmittingDivision(true);
-    try {
-      const res = await fetch("/api/divisions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newDivisionName.trim() }),
-      });
-      if (res.ok) {
-        setNewDivisionName("");
-        setShowDivisionModal(false);
-        router.refresh();
-      } else {
-        alert("Failed to add division");
+  const [activeTab, setActiveTab] = useState<MaintTabId>(initialTab);
+  const [prevInitialTab, setPrevInitialTab] = useState<MaintTabId>(initialTab);
+  if (initialTab !== prevInitialTab) {
+    setPrevInitialTab(initialTab);
+    setActiveTab(initialTab);
+  }
+
+  // Registry filters
+  const [assetSearch, setAssetSearch] = useState("");
+  const [divisionFilter, setDivisionFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  // Schedule filters
+  const [scheduleSearch, setScheduleSearch] = useState("");
+  const [scheduleStatusFilter, setScheduleStatusFilter] = useState("all");
+  const [scheduleTypeFilter, setScheduleTypeFilter] = useState("all");
+
+  // Drawers & modals
+  const [assetDrawerOpen, setAssetDrawerOpen] = useState(() =>
+    Boolean(initialAssetId && assets.some((a) => a.id === initialAssetId))
+  );
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(initialAssetId);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<MaintenanceScheduleItem | null>(null);
+
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<MaintenanceTemplateItem | null>(null);
+
+  const [executingScheduleId, setExecutingScheduleId] = useState<string | null>(
+    () =>
+      initialScheduleId ||
+      schedules.find((s) => s.status !== "DONE")?.id ||
+      null
+  );
+
+  // Confirm modals (replaces window.confirm)
+  const [retireTarget, setRetireTarget] = useState<EnterpriseAssetItem | null>(null);
+  const [deleteScheduleTarget, setDeleteScheduleTarget] = useState<MaintenanceScheduleItem | null>(
+    null
+  );
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<MaintenanceTemplateItem | null>(
+    null
+  );
+  const [busyAction, setBusyAction] = useState(false);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [nowMs] = useState(() => Date.now());
+
+  const showToast = useCallback((kind: "ok" | "err", text: string) => {
+    setToast({ kind, text });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const refreshServerData = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  // 4 Enterprise KPI Metrics
+  const kpiStats = useMemo(() => {
+    let activeCount = 0;
+    let repairIssueCount = 0;
+    let warrantyAlertCount = 0;
+
+    for (const a of assets) {
+      if (a.status === "ACTIVE" || a.status === "SPARE") activeCount += 1;
+      if (a.status === "IN_REPAIR" || a.status === "LOST") repairIssueCount += 1;
+      const wh = computeWarrantyHealth(a.warrantyEndDate, nowMs);
+      if (wh.state === "EXPIRED" || wh.state === "EXPIRING_SOON") {
+        warrantyAlertCount += 1;
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSubmittingDivision(false);
     }
-  };
-  const [search, setSearch] = useState("");
-  const [filterDivision, setFilterDivision] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterType, setFilterType] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<any>(null);
-  const [detailAsset, setDetailAsset] = useState<any>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    assetCode: "", assetName: "", assetTypeId: "", brand: "", model: "",
-    serialNumber: "", divisionId: "", person: "", location: "", detailedLocation: "", status: "ACTIVE",
-    purchaseDate: null as Date | null, warrantyEndDate: null as Date | null,
-    picUserId: "", notes: ""
-  });
 
-  const filtered = useMemo(() => {
-    return assets.filter((a: any) => {
-      if (search && !a.assetCode.toLowerCase().includes(search.toLowerCase()) &&
-          !a.assetName.toLowerCase().includes(search.toLowerCase()) &&
-          !(a.brand || "").toLowerCase().includes(search.toLowerCase())) return false;
-      if (filterDivision && a.divisionId !== filterDivision) return false;
-      if (filterStatus && a.status !== filterStatus) return false;
-      if (filterType && a.assetTypeId !== filterType) return false;
+    const pendingSchedules = schedules.filter((s) => s.status !== "DONE");
+    const overdueCount = pendingSchedules.filter(
+      (s) => computeScheduleUrgency(s.status, s.nextDueDate, nowMs).state === "OVERDUE"
+    ).length;
+
+    return {
+      totalAssets: assets.length,
+      activeCount,
+      repairIssueCount,
+      warrantyAlertCount,
+      pendingCount: pendingSchedules.length,
+      overdueCount,
+    };
+  }, [assets, schedules, nowMs]);
+
+  const activeAsset = useMemo(
+    () => (selectedAssetId ? assets.find((a) => a.id === selectedAssetId) || null : null),
+    [selectedAssetId, assets]
+  );
+
+  const filteredAssets = useMemo(() => {
+    const q = assetSearch.trim().toLowerCase();
+    return assets.filter((a) => {
+      if (divisionFilter !== "all" && a.divisionId !== divisionFilter) return false;
+      if (typeFilter !== "all" && a.assetTypeId !== typeFilter) return false;
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      if (q) {
+        const hay = [
+          a.assetCode,
+          a.assetName,
+          a.brand || "",
+          a.model || "",
+          a.serialNumber || "",
+          resolveAssetHolder(a) || "",
+          resolveAssetLocationLabel(a) || "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [assets, search, filterDivision, filterStatus, filterType]);
+  }, [assets, assetSearch, divisionFilter, typeFilter, statusFilter]);
 
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<any>(null);
+  const pendingSchedules = useMemo(
+    () => schedules.filter((s) => s.status !== "DONE"),
+    [schedules]
+  );
 
-  const resetForm = () => {
-    setFormData({
-      assetCode: "", assetName: "", assetTypeId: "", brand: "", model: "",
-      serialNumber: "", divisionId: "", person: "", location: "", detailedLocation: "", status: "ACTIVE", purchaseDate: null,
-      warrantyEndDate: null, picUserId: "", notes: ""
-    });
-  };
-
-  const openEdit = (asset: any) => {
-    setEditingAsset(asset);
-    setFormData({
-      assetCode: asset.assetCode, assetName: asset.assetName, assetTypeId: asset.assetTypeId,
-      brand: asset.brand || "", model: asset.model || "", serialNumber: asset.serialNumber || "",
-      divisionId: asset.divisionId || "", person: asset.person || "", location: asset.location || "", detailedLocation: asset.detailedLocation || "", status: asset.status,
-      purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate) : null,
-      warrantyEndDate: asset.warrantyEndDate ? new Date(asset.warrantyEndDate) : null,
-      picUserId: asset.picUserId || "", notes: asset.notes || ""
-    });
-    setShowForm(true);
-  };
-
-  const handleImportSubmit = async () => {
-    if (!importFile) return;
-    setImporting(true);
-    setImportResult(null);
-    try {
-      const form = new FormData();
-      form.append("file", importFile);
-      const res = await fetch("/api/assets/import", {
-        method: "POST",
-        body: form
-      });
-      const data = await res.json();
-      setImportResult(data);
-      if (data.success) {
-        router.refresh();
+  const filteredSchedules = useMemo(() => {
+    const q = scheduleSearch.trim().toLowerCase();
+    return schedules.filter((s) => {
+      if (scheduleStatusFilter !== "all" && s.status !== scheduleStatusFilter) return false;
+      if (scheduleTypeFilter !== "all" && s.scheduleType !== scheduleTypeFilter) return false;
+      if (q) {
+        const hay = [
+          s.asset.assetCode,
+          s.asset.assetName,
+          s.asset.location || "",
+          s.template?.templateName || "",
+          s.assignedExecutors.map((e) => e.name).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-    } catch (e: any) {
-      setImportResult({ success: false, error: e.message || "Upload failed" });
+      return true;
+    });
+  }, [schedules, scheduleSearch, scheduleStatusFilter, scheduleTypeFilter]);
+
+  const executingSchedule = useMemo(
+    () =>
+      (executingScheduleId
+        ? pendingSchedules.find((s) => s.id === executingScheduleId)
+        : null) ||
+      pendingSchedules[0] ||
+      null,
+    [executingScheduleId, pendingSchedules]
+  );
+
+  const tabs = useMemo(() => {
+    const list: Array<{
+      id: MaintTabId;
+      label: string;
+      shortLabel: string;
+      count: number;
+      icon: typeof Box;
+    }> = [
+      {
+        id: "assets",
+        label: t.assets.registryTab,
+        shortLabel: locale === "id" ? "Aset" : "Registry",
+        count: assets.length,
+        icon: Box,
+      },
+      {
+        id: "qr",
+        label: t.assets.qrStudioTab,
+        shortLabel: locale === "id" ? "QR" : "QR Code",
+        count: assets.length,
+        icon: QrCode,
+      },
+      {
+        id: "schedules",
+        label: t.assets.schedulesTab,
+        shortLabel: locale === "id" ? "Jadwal" : "Schedule",
+        count: kpiStats.pendingCount,
+        icon: CalendarClock,
+      },
+      {
+        id: "execute",
+        label: t.assets.execTab,
+        shortLabel: locale === "id" ? "Eksekusi" : "Execute",
+        count: logs.length,
+        icon: Wrench,
+      },
+    ];
+    if (isAdmin) {
+      list.push({
+        id: "templates",
+        label: t.assets.templatesTab,
+        shortLabel: locale === "id" ? "Templat" : "Template",
+        count: templates.length,
+        icon: ClipboardList,
+      });
+    }
+    return list;
+  }, [
+    isAdmin,
+    locale,
+    t.assets.registryTab,
+    t.assets.qrStudioTab,
+    t.assets.schedulesTab,
+    t.assets.execTab,
+    t.assets.templatesTab,
+    assets.length,
+    kpiStats.pendingCount,
+    logs.length,
+    templates.length,
+  ]);
+
+  const handleRetireConfirm = async () => {
+    if (!retireTarget || busyAction) return;
+    setBusyAction(true);
+    try {
+      const res = await fetch(`/api/assets/${retireTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        showToast("ok", `${retireTarget.assetCode} retired`);
+        setRetireTarget(null);
+        refreshServerData();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast("err", d.error || "Failed to retire asset");
+      }
     } finally {
-      setImporting(false);
+      setBusyAction(false);
     }
   };
 
-  const downloadImportTemplate = () => {
-    const csvContent = "Asset Code,Asset Name,Asset Type,Area,Location,Serial Number,Purchase Date\n"
-      + "SRV-001,Server Database Utama,Server,Ruang Server,Rack A1,SN123456,2024-01-01\n"
-      + "NET-005,Router MikroTik Core,Network,Ruang Server,Rack A2,SN98765,2024-01-15\n";
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "Template_Import_Asset.csv");
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.assetCode.trim() || !formData.assetName.trim() || !formData.assetTypeId || !formData.divisionId) return;
-    setIsSubmitting(true);
+  const handleDeleteScheduleConfirm = async () => {
+    if (!deleteScheduleTarget || busyAction) return;
+    setBusyAction(true);
     try {
-      const url = editingAsset ? `/api/assets/${editingAsset.id}` : "/api/assets";
-      const method = editingAsset ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+      const res = await fetch(`/api/maintenance-schedules/${deleteScheduleTarget.id}`, {
+        method: "DELETE",
       });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      setShowForm(false); setEditingAsset(null); resetForm(); router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
+      if (res.ok) {
+        showToast("ok", "Schedule deleted");
+        setDeleteScheduleTarget(null);
+        refreshServerData();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast("err", d.error || "Cannot delete schedule");
+      }
+    } finally {
+      setBusyAction(false);
+    }
   };
 
-  const handleRetire = async (id: string) => {
-    if (!confirm("Are you sure you want to retire this asset?")) return;
+  const handleDeleteTemplateConfirm = async () => {
+    if (!deleteTemplateTarget || busyAction) return;
+    setBusyAction(true);
     try {
-      await fetch(`/api/assets/${id}`, { method: "DELETE" });
-      router.refresh();
-    } catch (e) { console.error(e); }
+      const res = await fetch(`/api/maintenance-templates/${deleteTemplateTarget.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        showToast("ok", "Template deleted");
+        setDeleteTemplateTarget(null);
+        refreshServerData();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast("err", d.error || "Cannot delete template");
+      }
+    } finally {
+      setBusyAction(false);
+    }
   };
 
-  const fetchDetail = async (id: string) => {
+  const handleDuplicateTemplate = async (tpl: MaintenanceTemplateItem) => {
+    const res = await fetch(`/api/maintenance-templates/${tpl.id}/duplicate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (res.ok) {
+      showToast("ok", "Template duplicated");
+      refreshServerData();
+    } else {
+      showToast("err", "Failed to duplicate template");
+    }
+  };
+
+  const handleRemindSchedule = async (sch: MaintenanceScheduleItem) => {
+    if (remindingId) return;
+    setRemindingId(sch.id);
     try {
-      const res = await fetch(`/api/assets/${id}`);
-      const data = await res.json();
-      setDetailAsset(data);
-    } catch (e) { console.error(e); }
+      const res = await fetch(`/api/maintenance-schedules/${sch.id}/remind`, { method: "POST" });
+      showToast(res.ok ? "ok" : "err", res.ok ? "Reminder sent" : "Failed to send reminder");
+    } finally {
+      setRemindingId(null);
+    }
+  };
+
+  const renderAssetStatusBadge = (status: string) => {
+    const tone =
+      status === "ACTIVE"
+        ? "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]"
+        : status === "IN_REPAIR"
+          ? "bg-[var(--warn-bg)] border-[var(--warn-stroke)] text-[var(--warn)]"
+          : status === "SPARE"
+            ? "bg-[var(--info-bg)] border-[var(--info-stroke)] text-[var(--info)]"
+            : status === "RETIRED" || status === "LOST"
+              ? "bg-[var(--err-bg)] border-[var(--err-stroke)] text-[var(--err)]"
+              : "bg-[var(--bg-subtle)] border-[var(--border-subtle)] text-[var(--text-ink2)]";
+
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded-full border font-mono-code text-[10px] font-bold whitespace-nowrap ${tone}`}
+      >
+        {status.replace("_", " ")}
+      </span>
+    );
   };
 
   return (
-    <div>
-      {/* Filter Bar */}
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text" placeholder="Search code, name, brand..."
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-            value={search} onChange={e => setSearch(e.target.value)}
-          />
+    <div className="w-full px-3 sm:px-5 lg:px-6 py-4 space-y-4">
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-20 md:bottom-5 right-4 z-50 px-4 py-2.5 rounded-2xl border shadow-lg text-xs font-semibold flex items-center gap-2 ${
+            toast.kind === "ok"
+              ? "bg-[var(--bg-surface)] border-[var(--ok-stroke)] text-[var(--ok)]"
+              : "bg-[var(--bg-surface)] border-[var(--err-stroke)] text-[var(--err)]"
+          }`}
+        >
+          <span>{toast.text}</span>
+          <button type="button" onClick={() => setToast(null)} className="cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
-        <ModernSelect value={filterDivision} onChange={setFilterDivision} placeholder="All Divisions"
-          options={[{ value: "", label: "All Divisions" }, ...divisions.map((d: any) => ({ value: d.id, label: d.name }))]}
-          className="w-44" />
-        <ModernSelect value={filterStatus} onChange={setFilterStatus} placeholder="All Status"
-          options={[{ value: "", label: "All Status" }, ...(["ACTIVE", "IN_REPAIR", "INACTIVE", "RETIRED"].map(s => ({ value: s, label: s })))]}
-          className="w-40" />
-        <ModernSelect value={filterType} onChange={setFilterType} placeholder="All Types"
-          options={[{ value: "", label: "All Types" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
-          className="w-48" />
-        {isAdmin && (
-          <div className="flex gap-2">
-            <button onClick={() => { setShowImportModal(true); setImportFile(null); setImportResult(null); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-500/20">
-              <FileSpreadsheet className="w-4 h-4" /> Import Excel
-            </button>
-            <button onClick={() => { resetForm(); setEditingAsset(null); setShowForm(true); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20">
-              <Plus className="w-4 h-4" /> Add Asset
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
-      {/* Asset Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200/60">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 text-gray-600 text-left">
-              <th className="px-4 py-3 font-semibold">Code</th>
-              <th className="px-4 py-3 font-semibold">Name</th>
-              <th className="px-4 py-3 font-semibold">Type</th>
-              <th className="px-4 py-3 font-semibold">Division</th>
-              <th className="px-4 py-3 font-semibold">User/Person</th>
-              <th className="px-4 py-3 font-semibold">Location</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">PIC</th>
-              {isAdmin && <th className="px-4 py-3 font-semibold text-right">Action</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Tidak ada assets ditemukan</td></tr>
-            ) : filtered.map((asset: any) => (
-              <tr key={asset.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer" onClick={() => fetchDetail(asset.id)}>
-                <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{asset.assetCode}</td>
-                <td className="px-4 py-3 font-medium">{asset.assetName}</td>
-                <td className="px-4 py-3 text-gray-500">{asset.assetType?.name}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{asset.division?.name || "-"}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{asset.person || "-"}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{asset.location || "-"}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[asset.status] || ""}`}>
-                    {asset.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{asset.pic?.name || "-"}</td>
-                {isAdmin && (
-                  <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => openEdit(asset)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors mr-1">
-                      <FileText className="w-3.5 h-3.5" />
-                    </button>
-                    {asset.status !== "RETIRED" && (
-                      <button onClick={() => handleRetire(asset.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-gray-400 mt-2">{filtered.length} of {assets.length} assets</p>
-
-      {/* Create/Edit Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowForm(false); setEditingAsset(null); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingAsset ? "Edit Asset" : "Add New Asset"}</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Code *</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.assetCode} onChange={e => setFormData({ ...formData, assetCode: e.target.value })} placeholder="SRV-SBY1-001" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Name *</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.assetName} onChange={e => setFormData({ ...formData, assetName: e.target.value })} placeholder="Server Database Surabaya 1" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Type *</label>
-                <ModernSelect value={formData.assetTypeId} onChange={v => setFormData({ ...formData, assetTypeId: v })}
-                  options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-600">Division *</label>
-                  <button onClick={() => setShowDivisionModal(true)} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                    + New
-                  </button>
-                </div>
-                <ModernSelect value={formData.divisionId} onChange={v => setFormData({ ...formData, divisionId: v })}
-                  options={divisions.map((d: any) => ({ value: d.id, label: d.name }))} placeholder="Select division..." />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Person Using Asset</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.person} onChange={e => setFormData({ ...formData, person: e.target.value })} placeholder="John Doe" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Location *</label>
-                <ModernSelect value={formData.location} onChange={v => setFormData({ ...formData, location: v })}
-                  options={AVAILABLE_LOCATIONS.map(l => ({ value: l, label: l }))} placeholder="Select location..." />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Detailed Location</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.detailedLocation} onChange={e => setFormData({ ...formData, detailedLocation: e.target.value })} placeholder="Ruang Server Lt.2" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Brand</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.brand} onChange={e => setFormData({ ...formData, brand: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Model</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Serial Number</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={formData.serialNumber} onChange={e => setFormData({ ...formData, serialNumber: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
-                <ModernSelect value={formData.status} onChange={v => setFormData({ ...formData, status: v })}
-                  options={["ACTIVE", "IN_REPAIR", "INACTIVE", "RETIRED"].map(s => ({ value: s, label: s }))} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">PIC</label>
-                <ModernSelect value={formData.picUserId} onChange={v => setFormData({ ...formData, picUserId: v })}
-                  options={[{ value: "", label: "None" }, ...systemUsers.map((u: any) => ({ value: u.id, label: u.name }))]} placeholder="Select PIC..." />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Purchase Date</label>
-                <DatePicker selected={formData.purchaseDate} onChange={(d: Date | null) => setFormData({ ...formData, purchaseDate: d })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Warranty Until</label>
-                <DatePicker selected={formData.warrantyEndDate} onChange={(d: Date | null) => setFormData({ ...formData, warrantyEndDate: d })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" placeholderText="Select date..." />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                <textarea className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
-                  rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => { setShowForm(false); setEditingAsset(null); }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
-              <button onClick={handleSubmit} disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {editingAsset ? "Update" : "Save"}
+      {/* 1. Top Workspace Switcher Bar */}
+      <section className="no-print flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-2.5 sm:px-3.5">
+        <div
+          className={`grid ${isAdmin ? "grid-cols-5" : "grid-cols-4"} sm:inline-flex sm:flex-wrap items-center bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-2xl sm:rounded-full p-0.5 gap-0.5 w-full lg:w-auto`}
+        >
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-xl sm:rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                  active
+                    ? "bg-[var(--bg-surface)] text-[var(--brand)] shadow-2xs"
+                    : "text-[var(--text-ink2)] hover:text-[var(--text-ink)]"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden truncate max-w-full">{tab.shortLabel}</span>
+                <span className="hidden sm:inline truncate max-w-full">{tab.label}</span>
+                <span className="hidden md:inline font-mono-code text-[9.5px] text-[var(--text-muted)] tnum">
+                  {tab.count}
+                </span>
               </button>
+            );
+          })}
+        </div>
+
+        {/* Context CTA buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {activeTab === "assets" && isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-canvas)] hover:border-[var(--brand)] text-xs font-semibold text-[var(--text-ink)] cursor-pointer whitespace-nowrap"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>{t.assets.importExcel}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAssetId(null);
+                  setAssetDrawerOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t.assets.newAsset}</span>
+              </button>
+            </>
+          )}
+
+          {activeTab === "schedules" && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingSchedule(null);
+                setScheduleModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t.assets.newSchedule}</span>
+            </button>
+          )}
+
+          {activeTab === "templates" && isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingTemplate(null);
+                setTemplateModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t.assets.newTemplate}</span>
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* 2. Enterprise Telemetry Strip (4 KPI Cards) */}
+      <section className="no-print grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.assets.kpiTotalAssets}
+            </span>
+            <Box className="w-4 h-4 text-[var(--brand)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiStats.totalAssets}
+            </span>
+            <span className="font-mono-code text-[10px] font-bold text-[var(--ok)] tnum">
+              {kpiStats.activeCount} active
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.assets.kpiInRepair}
+            </span>
+            <AlertTriangle className="w-4 h-4 text-[var(--warn)] shrink-0" />
+          </div>
+          <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+            {kpiStats.repairIssueCount}
+          </span>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.assets.kpiWarrantyAlert}
+            </span>
+            <ShieldAlert className="w-4 h-4 text-[var(--err)] shrink-0" />
+          </div>
+          <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+            {kpiStats.warrantyAlertCount}
+          </span>
+        </div>
+
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t.assets.kpiPendingSched}
+            </span>
+            <CalendarClock className="w-4 h-4 text-[var(--info)] shrink-0" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-heading font-extrabold text-xl sm:text-2xl text-[var(--text-ink)] tnum">
+              {kpiStats.pendingCount}
+            </span>
+            {kpiStats.overdueCount > 0 && (
+              <span className="font-mono-code text-[10px] font-bold text-[var(--err)] tnum">
+                {kpiStats.overdueCount} overdue
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ═════════════════════════════════════════════════════════════
+          TAB 1: ASSET REGISTRY
+         ═════════════════════════════════════════════════════════════ */}
+      {activeTab === "assets" && (
+        <div className="space-y-3.5">
+          {/* Filters */}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3">
+            <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-2">
+              <div className="relative flex-1 min-w-0 lg:max-w-xs">
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={assetSearch}
+                  onChange={(e) => setAssetSearch(e.target.value)}
+                  placeholder={t.assets.searchPlaceholder}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-ink)] focus:outline-none focus:border-[var(--brand)]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto">
+                <ThemedSelect
+                  value={divisionFilter}
+                  onChange={setDivisionFilter}
+                  options={[
+                    { value: "all", label: t.assets.allDivisions },
+                    ...divisions.map((d) => ({ value: d.id, label: d.name })),
+                  ]}
+                  className="w-full sm:w-auto sm:min-w-[150px]"
+                />
+                <ThemedSelect
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  options={[
+                    { value: "all", label: t.assets.allTypes },
+                    ...assetTypes.map((at) => ({ value: at.id, label: at.name })),
+                  ]}
+                  className="w-full sm:w-auto sm:min-w-[160px]"
+                />
+                <ThemedSelect
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  options={[
+                    { value: "all", label: t.assets.allStatuses },
+                    ...ASSET_STATUS_VALUES.map((s) => ({ value: s, label: s.replace("_", " ") })),
+                  ]}
+                  className="col-span-2 sm:col-span-1 w-full sm:w-auto sm:min-w-[140px]"
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Desktop/Tablet Table */}
+          <div className="hidden md:block bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
+            {filteredAssets.length === 0 ? (
+              <div className="py-14 text-center text-xs text-[var(--text-muted)]">
+                No assets match the current filters.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-canvas)]/70 font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="py-3 px-3.5">Code</th>
+                      <th className="py-3 px-3">Asset & Specs</th>
+                      <th className="py-3 px-3">Type & Division</th>
+                      <th className="py-3 px-3">Custody & Location</th>
+                      <th className="py-3 px-3">Status & Warranty</th>
+                      <th className="py-3 px-3.5 text-right">{t.common.actions}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
+                    {filteredAssets.map((a) => {
+                      const holder = resolveAssetHolder(a);
+                      const loc = resolveAssetLocationLabel(a);
+                      const wh = computeWarrantyHealth(a.warrantyEndDate, nowMs);
+                      return (
+                        <tr
+                          key={a.id}
+                          onClick={() => {
+                            setSelectedAssetId(a.id);
+                            setAssetDrawerOpen(true);
+                          }}
+                          className="hover:bg-[var(--bg-canvas)]/70 transition-colors cursor-pointer align-top"
+                        >
+                          <td className="py-3 px-3.5 min-w-[130px]">
+                            <span className="font-mono-code text-xs font-bold text-[var(--brand)] whitespace-nowrap">
+                              {a.assetCode}
+                            </span>
+                            {a.qrPrintedAt && (
+                              <p className="font-mono-code text-[9.5px] text-[var(--ok)] mt-0.5">
+                                {t.assets.qrPrintedLabel}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 max-w-[260px]">
+                            <p className="font-semibold text-xs text-[var(--text-ink)] truncate">
+                              {a.assetName}
+                            </p>
+                            <p className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                              {[a.brand, a.model, a.serialNumber ? `SN: ${a.serialNumber}` : null]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="text-xs font-medium text-[var(--text-ink)]">
+                              {a.assetType?.name || "—"}
+                            </p>
+                            <p className="text-[11px] text-[var(--text-muted)]">
+                              {a.division?.name || "—"}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="text-xs font-medium text-[var(--text-ink)] flex items-center gap-1">
+                              <UserCheck className="w-3 h-3 text-[var(--brand)] shrink-0" />
+                              <span className="truncate max-w-[170px]">{holder || "Unassigned"}</span>
+                            </p>
+                            <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate max-w-[170px]">{loc || "—"}</span>
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col items-start gap-1">
+                              {renderAssetStatusBadge(a.status)}
+                              {wh.state !== "UNTRACKED" && (
+                                <span
+                                  className={`font-mono-code text-[9.5px] font-bold ${
+                                    wh.state === "EXPIRED"
+                                      ? "text-[var(--err)]"
+                                      : wh.state === "EXPIRING_SOON"
+                                        ? "text-[var(--warn)]"
+                                        : "text-[var(--ok)]"
+                                  }`}
+                                >
+                                  {wh.state === "EXPIRED"
+                                    ? t.assets.warrantyExpired
+                                    : wh.state === "EXPIRING_SOON"
+                                      ? `${t.assets.warrantyExpiring} (${wh.daysRemaining}d)`
+                                      : t.assets.warrantyActive}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <Link
+                                href={`/assets/q/${encodeURIComponent(a.assetCode)}`}
+                                onClick={(e) => e.stopPropagation()}
+                                title={t.assets.openScanPage}
+                                className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] hover:border-[var(--brand)]"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                              </Link>
+                              {isAdmin && a.status !== "RETIRED" && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRetireTarget(a);
+                                  }}
+                                  title="Retire Asset"
+                                  className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--err)] cursor-pointer"
+                                >
+                                  <PackageX className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Card List */}
+          <div className="md:hidden space-y-2.5">
+            {filteredAssets.map((a) => {
+              const holder = resolveAssetHolder(a);
+              const loc = resolveAssetLocationLabel(a);
+              return (
+                <div
+                  key={a.id}
+                  onClick={() => {
+                    setSelectedAssetId(a.id);
+                    setAssetDrawerOpen(true);
+                  }}
+                  className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 space-y-2 cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-mono-code text-xs font-bold text-[var(--brand)] whitespace-nowrap">
+                      {a.assetCode}
+                    </span>
+                    {renderAssetStatusBadge(a.status)}
+                  </div>
+                  <p className="font-semibold text-sm text-[var(--text-ink)] line-clamp-1">
+                    {a.assetName}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    {[a.assetType?.name, a.division?.name, loc].filter(Boolean).join(" · ")}
+                  </p>
+                  <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-[var(--text-ink2)] truncate">
+                      {holder || "Unassigned"}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Link
+                        href={`/assets/q/${encodeURIComponent(a.assetCode)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                      </Link>
+                      {isAdmin && a.status !== "RETIRED" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRetireTarget(a);
+                          }}
+                          className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]"
+                        >
+                          <PackageX className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Detail Drawer */}
-      {detailAsset && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex justify-end" onClick={() => setDetailAsset(null)}>
-          <div className="bg-white w-full max-w-lg h-full overflow-y-auto shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold">Detail Aset</h3>
-              <button onClick={() => setDetailAsset(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-400 text-xs">Code</span><p className="font-mono font-bold text-blue-700">{detailAsset.assetCode}</p></div>
-                <div><span className="text-gray-400 text-xs">Status</span><p><span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[detailAsset.status]}`}>{detailAsset.status}</span></p></div>
-                <div><span className="text-gray-400 text-xs">Name</span><p className="font-medium">{detailAsset.assetName}</p></div>
-                <div><span className="text-gray-400 text-xs">Type</span><p>{detailAsset.assetType?.name}</p></div>
-                <div><span className="text-gray-400 text-xs">Division</span><p>{detailAsset.division?.name || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">Person</span><p>{detailAsset.person || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">Location</span><p>{detailAsset.location || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">Detailed Location</span><p>{detailAsset.detailedLocation || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">Brand / Model</span><p>{detailAsset.brand || "-"} {detailAsset.model || ""}</p></div>
-                <div><span className="text-gray-400 text-xs">Serial Number</span><p className="font-mono text-xs">{detailAsset.serialNumber || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">PIC</span><p>{detailAsset.pic?.name || "-"}</p></div>
-                <div><span className="text-gray-400 text-xs">Pembelian</span><p>{detailAsset.purchaseDate ? new Date(detailAsset.purchaseDate).toLocaleDateString("id-ID") : "-"}</p></div>
-              </div>
-              {detailAsset.notes && <div className="text-sm"><span className="text-gray-400 text-xs">Notes</span><p className="mt-1 text-gray-600">{detailAsset.notes}</p></div>}
+      {/* ═════════════════════════════════════════════════════════════
+          TAB 2: QR STICKER STUDIO & CUSTODY AUDIT
+         ═════════════════════════════════════════════════════════════ */}
+      {activeTab === "qr" && (
+        <QrCustodyView
+          assets={assets}
+          initialQrSvgMap={qrSvgMap}
+          isAdmin={isAdmin}
+          onRefresh={refreshServerData}
+          onNotify={showToast}
+        />
+      )}
 
-              {/* Riwayat Maintenance */}
-              <div className="mt-6 pt-4 border-t border-gray-100">
-                <h4 className="font-bold text-sm mb-3 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-blue-600" />Riwayat Maintenance</h4>
-                {detailAsset.schedules?.length === 0 ? (
-                  <p className="text-xs text-gray-400">Belum ada jadwal maintenance.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {detailAsset.schedules?.map((s: any) => (
-                      <div key={s.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold">{s.template?.templateName || "Ad-hoc"}</span>
-                          <span className={`px-2 py-0.5 rounded-full font-bold border ${SCHEDULE_STATUS_COLORS[s.status]}`}>{s.status}</span>
-                        </div>
-                        <p className="text-gray-500">Due: {new Date(s.nextDueDate).toLocaleDateString("id-ID")}</p>
-                        {s.logs?.map((log: any) => (
-                          <div key={log.id} className="mt-2 p-2 bg-white rounded-lg border border-gray-100">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600">Oleh: {log.executedBy?.name}</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${CONDITION_COLORS[log.overallCondition]}`}>
-                                {CONDITION_LABELS[log.overallCondition]}
+      {/* ═════════════════════════════════════════════════════════════
+          TAB 3: PREVENTIVE MAINTENANCE SCHEDULES
+         ═════════════════════════════════════════════════════════════ */}
+      {activeTab === "schedules" && (
+        <div className="space-y-3.5">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+              <div className="relative flex-1 min-w-0 sm:min-w-[200px] sm:max-w-xs">
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={scheduleSearch}
+                  onChange={(e) => setScheduleSearch(e.target.value)}
+                  placeholder="Search asset or executor..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-ink)] focus:outline-none focus:border-[var(--brand)]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                <ThemedSelect
+                  value={scheduleStatusFilter}
+                  onChange={setScheduleStatusFilter}
+                  options={[
+                    { value: "all", label: t.assets.allStatuses },
+                    { value: "OVERDUE", label: "OVERDUE" },
+                    { value: "DUE", label: "DUE" },
+                    { value: "UPCOMING", label: "UPCOMING" },
+                    { value: "DONE", label: "DONE" },
+                  ]}
+                  className="w-full sm:w-40"
+                />
+                <ThemedSelect
+                  value={scheduleTypeFilter}
+                  onChange={setScheduleTypeFilter}
+                  options={[
+                    { value: "all", label: "All Types" },
+                    { value: "RECURRING", label: "RECURRING" },
+                    { value: "ADHOC", label: "ADHOC" },
+                  ]}
+                  className="w-full sm:w-40"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden md:block bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
+            {filteredSchedules.length === 0 ? (
+              <div className="py-14 text-center text-xs text-[var(--text-muted)]">
+                No maintenance schedules found.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[920px] text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-canvas)]/70 font-mono-code text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="py-3 px-3.5">Asset</th>
+                      <th className="py-3 px-3">Template & Cycle</th>
+                      <th className="py-3 px-3">Due Date & Urgency</th>
+                      <th className="py-3 px-3">Executors</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3.5 text-right">{t.common.actions}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
+                    {filteredSchedules.map((sch) => {
+                      const urg = computeScheduleUrgency(sch.status, sch.nextDueDate, nowMs);
+                      return (
+                        <tr
+                          key={sch.id}
+                          className="hover:bg-[var(--bg-canvas)]/60 transition-colors align-top"
+                        >
+                          <td className="py-3 px-3.5">
+                            <p className="font-mono-code text-[11px] font-bold text-[var(--brand)]">
+                              {sch.asset.assetCode}
+                            </p>
+                            <p className="text-xs font-semibold text-[var(--text-ink)]">
+                              {sch.asset.assetName}
+                            </p>
+                            <p className="text-[11px] text-[var(--text-muted)]">
+                              {sch.asset.location || "-"}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="text-xs font-medium text-[var(--text-ink)]">
+                              {sch.template?.templateName || "Ad-Hoc Inspection"}
+                            </p>
+                            <p className="font-mono-code text-[10px] text-[var(--text-muted)]">
+                              {sch.scheduleType}
+                              {sch.frequencyDays ? ` · Every ${sch.frequencyDays}d` : ""}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="font-mono-code text-xs font-semibold text-[var(--text-ink)] tnum">
+                              {format(new Date(sch.nextDueDate), "dd MMM yyyy")}
+                            </p>
+                            {sch.status !== "DONE" && (
+                              <span
+                                className={`inline-block mt-1 font-mono-code text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${
+                                  urg.state === "OVERDUE"
+                                    ? "bg-[var(--err-bg)] border-[var(--err-stroke)] text-[var(--err)]"
+                                    : urg.state === "DUE_SOON"
+                                      ? "bg-[var(--warn-bg)] border-[var(--warn-stroke)] text-[var(--warn)]"
+                                      : "bg-[var(--info-bg)] border-[var(--info-stroke)] text-[var(--info)]"
+                                }`}
+                              >
+                                {urg.state === "OVERDUE"
+                                  ? `${Math.abs(urg.daysDelta)}d overdue`
+                                  : `in ${urg.daysDelta}d`}
                               </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-xs text-[var(--text-ink2)]">
+                            {sch.assignedExecutors.length > 0
+                              ? sch.assignedExecutors.map((e) => e.name).join(", ")
+                              : "Unassigned"}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full border font-mono-code text-[10px] font-bold ${
+                                sch.status === "DONE"
+                                  ? "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]"
+                                  : sch.status === "OVERDUE"
+                                    ? "bg-[var(--err-bg)] border-[var(--err-stroke)] text-[var(--err)]"
+                                    : "bg-[var(--brand-tint)] border-[var(--brand-stroke)] text-[var(--brand)]"
+                              }`}
+                            >
+                              {sch.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              {sch.status !== "DONE" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExecutingScheduleId(sch.id);
+                                      setActiveTab("execute");
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--brand)] text-white dark:text-[#161A26] text-[11px] font-semibold cursor-pointer"
+                                  >
+                                    <ClipboardCheck className="w-3 h-3" />
+                                    <span>{t.assets.executeNow}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemindSchedule(sch)}
+                                    disabled={remindingId === sch.id}
+                                    title={t.assets.remindTelegram}
+                                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
+                                  >
+                                    {remindingId === sch.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Bell className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </>
+                              )}
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingSchedule(sch);
+                                      setScheduleModalOpen(true);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteScheduleTarget(sch)}
+                                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--err)] cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
                             </div>
-                            <p className="text-gray-400 mt-0.5">{new Date(log.executionDate).toLocaleDateString("id-ID")}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Schedule Cards */}
+          <div className="md:hidden space-y-2.5">
+            {filteredSchedules.map((sch) => (
+              <div
+                key={sch.id}
+                className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3.5 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono-code text-[10.5px] font-bold text-[var(--brand)]">
+                      {sch.asset.assetCode}
+                    </span>
+                    <p className="font-semibold text-sm text-[var(--text-ink)]">
+                      {sch.asset.assetName}
+                    </p>
+                  </div>
+                  <span className="font-mono-code text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-ink2)]">
+                    {sch.status}
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-ink2)]">
+                  {sch.template?.templateName || "Ad-Hoc"} · Due{" "}
+                  {format(new Date(sch.nextDueDate), "dd MMM yyyy")}
+                </p>
+                {sch.status !== "DONE" && (
+                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
+                    <button
+                      type="button"
+                      onClick={() => handleRemindSchedule(sch)}
+                      className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)]"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExecutingScheduleId(sch.id);
+                        setActiveTab("execute");
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[var(--brand)] text-white dark:text-[#161A26] text-xs font-semibold"
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                      <span>{t.assets.executeNow}</span>
+                    </button>
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Division Modal */}
-      {showDivisionModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowDivisionModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-800">New Division</h3>
-              <button onClick={() => setShowDivisionModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Division Name *</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={newDivisionName} onChange={e => setNewDivisionName(e.target.value)} placeholder="e.g. IT Support, HR" autoFocus />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setShowDivisionModal(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
-                <button onClick={handleAddDivision} disabled={isSubmittingDivision || !newDivisionName.trim()} 
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50">
-                  {isSubmittingDivision ? "Saving..." : "Save Division"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   TAB 2: TEMPLATES (Admin only)
-   ============================================================ */
-function TemplateTab({ templates, assetTypes, router }: any) {
-  const [filterType, setFilterType] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editingItems, setEditingItems] = useState<any[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newTemplate, setNewTemplate] = useState({
-    templateName: "", assetTypeId: "", defaultFrequencyDays: 30, reminderOffsetDays: 3,
-    checklistItems: [{ itemText: "", order: 1, isRequired: true }] as any[]
-  });
-
-  const filtered = useMemo(() => {
-    if (!filterType) return templates;
-    return templates.filter((t: any) => t.assetTypeId === filterType);
-  }, [templates, filterType]);
-
-  const toggleExpand = (template: any) => {
-    if (expandedId === template.id) {
-      setExpandedId(null);
-    } else {
-      setExpandedId(template.id);
-      setEditingItems(template.checklistItems.map((item: any) => ({ ...item })));
-    }
-  };
-
-  const saveChecklist = async (templateId: string) => {
-    setIsSubmitting(true);
-    try {
-      const res = await fetch(`/api/maintenance-templates/${templateId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ checklistItems: editingItems }),
-      });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      setExpandedId(null); router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
-  };
-
-  const handleDuplicate = async (templateId: string) => {
-    try {
-      const res = await fetch(`/api/maintenance-templates/${templateId}/duplicate`, { method: "POST" });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      router.refresh();
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDelete = async (templateId: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
-    try {
-      const res = await fetch(`/api/maintenance-templates/${templateId}`, { method: "DELETE" });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      router.refresh();
-    } catch (e) { console.error(e); }
-  };
-
-  const handleCreate = async () => {
-    if (!newTemplate.templateName.trim() || !newTemplate.assetTypeId) return;
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/maintenance-templates", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newTemplate,
-          checklistItems: newTemplate.checklistItems.filter(i => i.itemText.trim()),
-        }),
-      });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      setShowCreateForm(false);
-      setNewTemplate({ templateName: "", assetTypeId: "", defaultFrequencyDays: 30, reminderOffsetDays: 3, checklistItems: [{ itemText: "", order: 1, isRequired: true }] });
-      router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
-  };
-
-  return (
-    <div>
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <ModernSelect value={filterType} onChange={setFilterType} placeholder="All Asset Types"
-          options={[{ value: "", label: "All Asset Types" }, ...assetTypes.map((t: any) => ({ value: t.id, label: t.name }))]}
-          className="w-52" />
-        <button onClick={() => setShowCreateForm(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 ml-auto">
-          <Plus className="w-4 h-4" /> Buat Template
-        </button>
-      </div>
-
-      <div className="space-y-3">
-        {filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">Tidak ada template</p>
-        ) : filtered.map((template: any) => (
-          <div key={template.id} className="bg-white/60 rounded-xl border border-gray-200/60 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50/50 transition-colors" onClick={() => toggleExpand(template)}>
-              <div className="flex items-center gap-3">
-                <ClipboardList className="w-4 h-4 text-blue-600" />
-                <div>
-                  <p className="font-semibold text-sm">{template.templateName}</p>
-                  <p className="text-xs text-gray-400">{template.assetType?.name} · {template.defaultFrequencyDays} hari · {template.checklistItems.length} item</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={e => { e.stopPropagation(); handleDuplicate(template.id); }}
-                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Duplicate">
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={e => { e.stopPropagation(); handleDelete(template.id); }}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                {expandedId === template.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-              </div>
-            </div>
-
-            {expandedId === template.id && (
-              <div className="px-4 pb-4 border-t border-gray-100">
-                <div className="mt-3 space-y-2">
-                  {editingItems.map((item, idx) => (
-                    <div key={item.id || `new-${idx}`} className="flex items-center gap-2 group">
-                      <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
-                      <span className="text-xs text-gray-400 w-6 shrink-0">{idx + 1}.</span>
-                      <input className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        value={item.itemText} onChange={e => {
-                          const updated = [...editingItems]; updated[idx].itemText = e.target.value; setEditingItems(updated);
-                        }} />
-                      <label className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
-                        <input type="checkbox" checked={item.isRequired} onChange={e => {
-                          const updated = [...editingItems]; updated[idx].isRequired = e.target.checked; setEditingItems(updated);
-                        }} className="rounded" /> Wajib
-                      </label>
-                      <button onClick={() => setEditingItems(editingItems.filter((_, i) => i !== idx))}
-                        className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <button onClick={() => setEditingItems([...editingItems, { itemText: "", order: editingItems.length + 1, isRequired: true }])}
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium mt-1">
-                    <Plus className="w-3 h-3" /> Add Item
-                  </button>
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button onClick={() => setExpandedId(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">Cancel</button>
-                  <button onClick={() => saveChecklist(template.id)} disabled={isSubmitting}
-                    className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                    {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Simpan
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Create Template Modal */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreateForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Buat Template Baru</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Template Name *</label>
-                <input className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={newTemplate.templateName} onChange={e => setNewTemplate({ ...newTemplate, templateName: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Asset Type *</label>
-                  <ModernSelect value={newTemplate.assetTypeId} onChange={v => setNewTemplate({ ...newTemplate, assetTypeId: v })}
-                    options={assetTypes.map((t: any) => ({ value: t.id, label: t.name }))} placeholder="Select type..." />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Frequency (days)</label>
-                  <input type="number" min={1} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none"
-                    value={newTemplate.defaultFrequencyDays} onChange={e => setNewTemplate({ ...newTemplate, defaultFrequencyDays: parseInt(e.target.value) || 1 })} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Checklist Items</label>
-                <div className="space-y-2">
-                  {newTemplate.checklistItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-5">{idx + 1}.</span>
-                      <input className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none"
-                        value={item.itemText} placeholder="Checklist item..."
-                        onChange={e => {
-                          const items = [...newTemplate.checklistItems]; items[idx].itemText = e.target.value;
-                          setNewTemplate({ ...newTemplate, checklistItems: items });
-                        }} />
-                      <button onClick={() => setNewTemplate({ ...newTemplate, checklistItems: newTemplate.checklistItems.filter((_, i) => i !== idx) })}
-                        className="p-1 text-gray-300 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
-                    </div>
-                  ))}
-                  <button onClick={() => setNewTemplate({
-                    ...newTemplate,
-                    checklistItems: [...newTemplate.checklistItems, { itemText: "", order: newTemplate.checklistItems.length + 1, isRequired: true }]
-                  })} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">
-                    <Plus className="w-3 h-3" /> Add Item
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowCreateForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
-              <button onClick={handleCreate} disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow-md">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Simpan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   TAB 3: SCHEDULES
-   ============================================================ */
-function ScheduleTab({ schedules, assets, templates, assetTypes, isAdmin, currentUser, router, divisions }: any) {
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterDivision, setFilterDivision] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [remindingScheduleId, setRemindingScheduleId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    scheduleType: "RECURRING", assetId: "", templateId: "", frequencyDays: 0, nextDueDate: null as Date | null
-  });
-
-  const filtered = useMemo(() => {
-    return schedules.filter((s: any) => {
-      if (filterStatus && s.status !== filterStatus) return false;
-      if (filterDivision && s.asset?.divisionId !== filterDivision) return false;
-      return true;
-    });
-  }, [schedules, filterStatus, filterDivision]);
-
-  const selectedAsset = assets.find((a: any) => a.id === formData.assetId);
-  const matchingTemplates = templates.filter((t: any) => selectedAsset && t.assetTypeId === selectedAsset.assetTypeId);
-
-  const handleCreate = async () => {
-    if (!formData.assetId || !formData.nextDueDate) return;
-    if (formData.scheduleType === "RECURRING" && !formData.templateId) return;
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/maintenance-schedules", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          frequencyDays: formData.frequencyDays || undefined,
-          templateId: formData.templateId || undefined,
-        }),
-      });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      setShowCreate(false); router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
-  };
-
-  const handleRemind = async (scheduleId: string) => {
-    if (remindingScheduleId) return;
-    setRemindingScheduleId(scheduleId);
-    try {
-      const res = await fetch(`/api/maintenance-schedules/${scheduleId}/remind`, { method: "POST" });
-      if (res.ok) {
-        alert("Pengingat berhasil dikirim ke Telegram!");
-      } else {
-        alert("Gagal mengirim pengingat.");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Terjadi kesalahan.");
-    } finally {
-      setRemindingScheduleId(null);
-    }
-  };
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { UPCOMING: 0, DUE: 0, OVERDUE: 0, DONE: 0 };
-    schedules.forEach((s: any) => { counts[s.status] = (counts[s.status] || 0) + 1; });
-    return counts;
-  }, [schedules]);
-
-  return (
-    <div>
-      {/* Status Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {(["UPCOMING", "DUE", "OVERDUE", "DONE"] as const).map(status => {
-          const icons: Record<string, any> = { UPCOMING: Clock, DUE: AlertCircle, OVERDUE: AlertTriangle, DONE: CheckCircle2 };
-          const Icon = icons[status];
-          return (
-            <button key={status} onClick={() => setFilterStatus(filterStatus === status ? "" : status)}
-              className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                filterStatus === status ? "ring-2 ring-blue-400 border-blue-300 bg-blue-50/50" : "bg-white/60 border-gray-200/60 hover:bg-white/80"
-              }`}>
-              <div className={`p-2 rounded-lg ${SCHEDULE_STATUS_COLORS[status]}`}><Icon className="w-4 h-4" /></div>
-              <div className="text-left">
-                <p className="text-lg font-bold">{statusCounts[status]}</p>
-                <p className="text-[10px] font-semibold text-gray-500 uppercase">{status}</p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <ModernSelect value={filterDivision} onChange={setFilterDivision} placeholder="All Divisions"
-          options={[{ value: "", label: "All Divisions" }, ...divisions.map((d: any) => ({ value: d.id, label: d.name }))]}
-          className="w-44" />
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20 ml-auto">
-          <Plus className="w-4 h-4" /> Buat Jadwal
-        </button>
-      </div>
-
-      {/* Schedule List */}
-      <div className="space-y-2">
-        {filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">Tidak ada jadwal</p>
-        ) : filtered.map((s: any) => (
-          <div key={s.id} className="flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-gray-200/60 hover:bg-white/80 transition-colors">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${SCHEDULE_STATUS_COLORS[s.status]}`}>{s.status}</span>
-              <div className="min-w-0">
-                <p className="font-semibold text-sm truncate">{s.asset?.assetName}</p>
-                <p className="text-xs text-gray-400 truncate">
-                  {s.asset?.assetCode} · {s.template?.templateName || "Ad-hoc"} · {s.asset?.division?.name || s.asset?.location || "-"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 shrink-0">
-              <div className="text-right">
-                <p className="text-sm font-semibold">{new Date(s.nextDueDate).toLocaleDateString("id-ID")}</p>
-                <p className="text-[10px] text-gray-400">
-                  {s.assignedExecutors?.map((e: any) => e.name).join(", ") || "No executors assigned"}
-                </p>
-              </div>
-              <div className="flex flex-col gap-1 items-end">
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.scheduleType === "RECURRING" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
-                  {s.scheduleType}
-                </span>
-                {['UPCOMING', 'DUE', 'OVERDUE'].includes(s.status) && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleRemind(s.id); }} 
-                    className="mt-1 p-1 bg-yellow-50 text-yellow-600 rounded hover:bg-yellow-100 transition-all" 
-                    title="Kirim Pengingat Telegram"
-                    disabled={remindingScheduleId === s.id}
-                  >
-                    {remindingScheduleId === s.id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Bell className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Create Schedule Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Buat Jadwal Maintenance</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Tipe Jadwal</label>
-                <div className="flex gap-2">
-                  {["RECURRING", "ADHOC"].map(type => (
-                    <button key={type} onClick={() => setFormData({ ...formData, scheduleType: type })}
-                      className={`flex-1 py-2 text-sm font-semibold rounded-xl border transition-all ${
-                        formData.scheduleType === type ? "bg-blue-600 text-white border-blue-600" : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-                      }`}>{type === "RECURRING" ? "Recurring" : "Ad-hoc"}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Aset *</label>
-                <ModernSelect value={formData.assetId} onChange={v => setFormData({ ...formData, assetId: v, templateId: "" })}
-                  options={assets.filter((a: any) => a.status === "ACTIVE").map((a: any) => ({ value: a.id, label: `${a.assetCode} - ${a.assetName}` }))}
-                  placeholder="Select asset..." />
-              </div>
-              {formData.scheduleType === "RECURRING" && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Template *</label>
-                  <ModernSelect value={formData.templateId} onChange={v => setFormData({ ...formData, templateId: v })}
-                    options={matchingTemplates.map((t: any) => ({ value: t.id, label: t.templateName }))}
-                    placeholder={selectedAsset ? "Select template..." : "Pilih assets dulu"} />
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Tanggal Jatuh Tempo *</label>
-                <DatePicker selected={formData.nextDueDate} onChange={(d: Date | null) => setFormData({ ...formData, nextDueDate: d })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none" dateFormat="dd/MM/yyyy" />
-              </div>
-              {selectedAsset && (
-                <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded-lg">
-                  ℹ️ Executor akan otomatis di-assign berdasarkan location: <strong>{selectedAsset.location || "-"}</strong>
-                </p>
-              )}
-            </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
-              <button onClick={handleCreate} disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow-md">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Buat Jadwal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   TAB 4: LOGS
-   ============================================================ */
-function LogTab({ logs, schedules, currentUser, isAdmin, router }: any) {
-  const [showLogForm, setShowLogForm] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
-  const [filterCondition, setFilterCondition] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [logForm, setLogForm] = useState({
-    checklistResults: [] as { itemText: string; checked: boolean; note: string }[],
-    overallCondition: "BAIK",
-    findings: "",
-    followUpNeeded: false,
-    attachment: "",
-  });
-
-  const actionableSchedules = schedules.filter((s: any) =>
-    s.status !== "DONE" && (isAdmin || s.assignedExecutors?.some((e: any) => e.id === currentUser.id))
-  );
-
-  const filteredLogs = useMemo(() => {
-    if (!filterCondition) return logs;
-    return logs.filter((l: any) => l.overallCondition === filterCondition);
-  }, [logs, filterCondition]);
-
-  const openLogForm = (schedule: any) => {
-    setSelectedSchedule(schedule);
-    const checklistItems = schedule.template?.checklistItems || [];
-    setLogForm({
-      checklistResults: checklistItems.map((item: any) => ({ itemText: item.itemText, checked: false, note: "" })),
-      overallCondition: "BAIK",
-      findings: "",
-      followUpNeeded: false,
-      attachment: "",
-    });
-    setShowLogForm(true);
-  };
-
-  const handleSubmitLog = async () => {
-    if (!selectedSchedule) return;
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/maintenance-logs", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scheduleId: selectedSchedule.id,
-          ...logForm,
-        }),
-      });
-      if (!res.ok) { const err = await res.json(); alert(err.error); return; }
-      const result = await res.json();
-      setShowLogForm(false); setSelectedSchedule(null);
-      if (result.followUp) {
-        alert(`✅ Log tersimpan!\n\n⚠️ Follow-up diperlukan.\nSilakan buat Support Ticket dengan judul:\n"${result.followUp.suggestedTicket.taskName}"`);
-      }
-      router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (res.ok) setLogForm({ ...logForm, attachment: data.url });
-      else alert(data.error);
-    } catch { alert("Upload gagal"); }
-  };
-
-  return (
-    <div>
-      {/* Actionable Schedules */}
-      {actionableSchedules.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-500" /> Jadwal yang perlu dikerjakan ({actionableSchedules.length})
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {actionableSchedules.map((s: any) => (
-              <div key={s.id} className="flex items-center justify-between p-3 bg-amber-50/50 rounded-xl border border-amber-200/60">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">{s.asset?.assetName}</p>
-                  <p className="text-xs text-gray-500">{s.template?.templateName || "Ad-hoc"} · Due: {new Date(s.nextDueDate).toLocaleDateString("id-ID")}</p>
-                </div>
-                <button onClick={() => openLogForm(s)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Mulai
-                </button>
-              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-3 mb-4">
-        <ModernSelect value={filterCondition} onChange={setFilterCondition} placeholder="Semua Kondisi"
-          options={[{ value: "", label: "Semua Kondisi" }, ...Object.entries(CONDITION_LABELS).map(([v, l]) => ({ value: v, label: l }))]}
-          className="w-48" />
-      </div>
-
-      {/* Log List */}
-      <div className="space-y-2">
-        {filteredLogs.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">Belum ada log maintenance</p>
-        ) : filteredLogs.map((log: any) => (
-          <div key={log.id} className="px-4 py-3 bg-white/60 rounded-xl border border-gray-200/60">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">{log.schedule?.asset?.assetName} <span className="font-mono text-xs text-gray-400">({log.schedule?.asset?.assetCode})</span></p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Oleh: {log.executedBy?.name} · {new Date(log.executionDate).toLocaleDateString("id-ID")} · {log.checklistResults?.length || 0} checklist
-                </p>
+      {/* ═════════════════════════════════════════════════════════════
+          TAB 4: EXECUTE MAINTENANCE CHECKLIST & INSPECTION HISTORY
+         ═════════════════════════════════════════════════════════════ */}
+      {activeTab === "execute" && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+          {/* Interactive Execution Panel */}
+          <div className="xl:col-span-7 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-[var(--brand)]" />
+                <h3 className="font-heading font-bold text-sm text-[var(--text-ink)]">
+                  {t.assets.pendingQueueTitle}
+                </h3>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${CONDITION_COLORS[log.overallCondition]}`}>
-                  {CONDITION_LABELS[log.overallCondition]}
-                </span>
-                {log.followUpNeeded && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">Follow-up</span>
-                )}
-              </div>
-            </div>
-            {log.findings && <p className="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded-lg">{log.findings}</p>}
-          </div>
-        ))}
-      </div>
 
-      {/* Log Submit Modal */}
-      {showLogForm && selectedSchedule && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowLogForm(false); setSelectedSchedule(null); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">Submit Maintenance Log</h3>
-            <p className="text-sm text-gray-500 mb-4">{selectedSchedule.asset?.assetName} — {selectedSchedule.template?.templateName || "Ad-hoc"}</p>
-
-            {/* Checklist */}
-            {logForm.checklistResults.length > 0 && (
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-gray-600 mb-2">Checklist ({logForm.checklistResults.filter(c => c.checked).length}/{logForm.checklistResults.length} selesai)</label>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {logForm.checklistResults.map((item, idx) => (
-                    <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${item.checked ? "bg-green-50/50 border-green-200/60" : "bg-gray-50 border-gray-200/60"}`}>
-                      <input type="checkbox" checked={item.checked} onChange={e => {
-                        const items = [...logForm.checklistResults]; items[idx].checked = e.target.checked;
-                        setLogForm({ ...logForm, checklistResults: items });
-                      }} className="mt-0.5 rounded" />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${item.checked ? "line-through text-gray-400" : "text-gray-700"}`}>{item.itemText}</p>
-                        <input placeholder="Catatan (opsional)..." className="mt-1 w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none"
-                          value={item.note} onChange={e => {
-                            const items = [...logForm.checklistResults]; items[idx].note = e.target.value;
-                            setLogForm({ ...logForm, checklistResults: items });
-                          }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Overall Condition */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-2">Kondisi Keseluruhan *</label>
-              <div className="flex gap-2">
-                {(["BAIK", "PERLU_PERHATIAN", "BERMASALAH"] as const).map(cond => (
-                  <button key={cond} onClick={() => setLogForm({ ...logForm, overallCondition: cond })}
-                    className={`flex-1 py-2.5 text-sm font-semibold rounded-xl border transition-all ${
-                      logForm.overallCondition === cond
-                        ? `${CONDITION_COLORS[cond]} ring-2 ring-current/20`
-                        : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-                    }`}>{CONDITION_LABELS[cond]}</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Findings */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Findings / Notes</label>
-              <textarea rows={3} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none resize-none"
-                value={logForm.findings} onChange={e => setLogForm({ ...logForm, findings: e.target.value })} placeholder="Deskripsikan temuan selama maintenance..." />
-            </div>
-
-            {/* Attachment */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Foto / Lampiran</label>
-              {logForm.attachment ? (
-                <div className="flex items-center gap-2 p-2 bg-green-50 rounded-xl border border-green-200">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-xs text-green-700 truncate flex-1">{logForm.attachment}</span>
-                  <button onClick={() => setLogForm({ ...logForm, attachment: "" })} className="text-gray-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
-                </div>
-              ) : (
-                <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
-                  <Upload className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">Klik untuk upload</span>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
-                </label>
+              {pendingSchedules.length > 0 && (
+                <ThemedSelect
+                  value={executingSchedule?.id || ""}
+                  onChange={setExecutingScheduleId}
+                  options={pendingSchedules.map((s) => ({
+                    value: s.id,
+                    label: `${s.asset.assetCode} · ${s.asset.assetName}`,
+                    badge: format(new Date(s.nextDueDate), "dd MMM"),
+                  }))}
+                  className="w-full sm:w-72"
+                  menuAlign="right"
+                />
               )}
             </div>
 
-            {/* Follow-up */}
-            <label className="flex items-center gap-2 mb-4 p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 cursor-pointer">
-              <input type="checkbox" checked={logForm.followUpNeeded} onChange={e => setLogForm({ ...logForm, followUpNeeded: e.target.checked })} className="rounded" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">Perlu Follow-up</p>
-                <p className="text-xs text-amber-600">Akan menyiapkan data untuk buat Support Ticket</p>
+            {!executingSchedule ? (
+              <div className="py-12 text-center space-y-2 text-[var(--text-muted)]">
+                <CheckCircle2 className="w-9 h-9 text-[var(--ok)] mx-auto" />
+                <p className="text-sm font-semibold text-[var(--text-ink)]">
+                  {t.assets.noPendingSchedules}
+                </p>
               </div>
-            </label>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div>
+                    <p className="font-mono-code font-bold text-[var(--brand)]">
+                      {executingSchedule.asset.assetCode}
+                    </p>
+                    <p className="font-semibold text-[var(--text-ink)]">
+                      {executingSchedule.asset.assetName}
+                    </p>
+                  </div>
+                  <span className="font-mono-code text-[11px] text-[var(--text-muted)] tnum">
+                    Due {format(new Date(executingSchedule.nextDueDate), "dd MMM yyyy")}
+                  </span>
+                </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <button onClick={() => { setShowLogForm(false); setSelectedSchedule(null); }} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
-              <button onClick={handleSubmitLog} disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 shadow-md">
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Submit Log
+                <ExecuteMaintenancePanel
+                  key={executingSchedule.id}
+                  schedule={executingSchedule}
+                  onNotify={showToast}
+                  onSubmitted={() => {
+                    refreshServerData();
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Inspection History Logs */}
+          <div className="xl:col-span-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--border-subtle)]">
+              <History className="w-4 h-4 text-[var(--ok)]" />
+              <h3 className="font-heading font-bold text-sm text-[var(--text-ink)]">
+                {t.assets.recentLogsTitle} ({logs.length})
+              </h3>
+            </div>
+
+            {logs.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] py-8 text-center">
+                No maintenance logs recorded yet.
+              </p>
+            ) : (
+              <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
+                {logs.map((l) => (
+                  <div
+                    key={l.id}
+                    className="bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-xl p-3 space-y-1.5 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono-code text-[10.5px] font-bold text-[var(--brand)]">
+                          {l.schedule?.asset.assetCode || "ASSET"}
+                        </p>
+                        <p className="font-semibold text-[var(--text-ink)] truncate">
+                          {l.schedule?.asset.assetName || "Maintenance Log"}
+                        </p>
+                      </div>
+                      <span
+                        className={`font-mono-code text-[9.5px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                          l.overallCondition === "BAIK"
+                            ? "bg-[var(--ok-bg)] border-[var(--ok-stroke)] text-[var(--ok)]"
+                            : l.overallCondition === "PERLU_PERHATIAN"
+                              ? "bg-[var(--warn-bg)] border-[var(--warn-stroke)] text-[var(--warn)]"
+                              : "bg-[var(--err-bg)] border-[var(--err-stroke)] text-[var(--err)]"
+                        }`}
+                      >
+                        {l.overallCondition}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      {l.executedBy?.name || "IT Staff"} ·{" "}
+                      {format(new Date(l.executionDate), "dd MMM yyyy HH:mm")} ·{" "}
+                      {l.checklistResults.filter((c) => c.checked).length}/{l.checklistResults.length}{" "}
+                      passed
+                    </p>
+
+                    {l.findings && (
+                      <p className="text-[11px] text-[var(--text-ink2)]">{l.findings}</p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {l.supportTicket && (
+                        <Link
+                          href={`/support?ticket=${l.supportTicket.id}`}
+                          className="inline-flex items-center gap-1 font-mono-code text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--warn-bg)] border border-[var(--warn-stroke)] text-[var(--warn)]"
+                        >
+                          <Ticket className="w-3 h-3" />
+                          <span>{l.supportTicket.ticketNumber || "Support Ticket"}</span>
+                        </Link>
+                      )}
+                      {l.attachment && (
+                        <a
+                          href={l.attachment}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--brand)] hover:underline"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Proof
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════
+          TAB 5: CHECKLIST TEMPLATES (ADMIN ONLY)
+         ═════════════════════════════════════════════════════════════ */}
+      {activeTab === "templates" && isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+          {templates.map((tpl) => (
+            <div
+              key={tpl.id}
+              className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-4 flex flex-col justify-between gap-3"
+            >
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="font-mono-code text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--brand-tint)] border border-[var(--brand-stroke)] text-[var(--brand)]">
+                      {tpl.assetType?.name || "Asset Type"}
+                    </span>
+                    <h4 className="font-heading font-bold text-sm text-[var(--text-ink)] mt-1.5">
+                      {tpl.templateName}
+                    </h4>
+                  </div>
+                  <span className="font-mono-code text-[10.5px] font-bold text-[var(--text-muted)] shrink-0 tnum">
+                    Every {tpl.defaultFrequencyDays}d
+                  </span>
+                </div>
+
+                <ul className="space-y-1 text-xs text-[var(--text-ink2)]">
+                  {tpl.checklistItems.slice(0, 4).map((it) => (
+                    <li key={it.id} className="flex items-center gap-1.5 truncate">
+                      <CheckCircle2 className="w-3 h-3 text-[var(--ok)] shrink-0" />
+                      <span className="truncate">{it.itemText}</span>
+                    </li>
+                  ))}
+                  {tpl.checklistItems.length > 4 && (
+                    <li className="text-[11px] text-[var(--text-muted)] pl-4">
+                      +{tpl.checklistItems.length - 4} more items
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                <span className="font-mono-code text-[10px] text-[var(--text-muted)] tnum">
+                  {tpl._count?.schedules || 0} active schedule(s)
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleDuplicateTemplate(tpl)}
+                    title={t.assets.duplicateTemplate}
+                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTemplate(tpl);
+                      setTemplateModalOpen(true);
+                    }}
+                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-ink2)] cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTemplateTarget(tpl)}
+                    className="p-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--err)] cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Drawers & Modals */}
+      <AssetDetailDrawer
+        isOpen={assetDrawerOpen}
+        asset={activeAsset}
+        qrSvgMap={qrSvgMap}
+        assetTypes={assetTypes}
+        divisions={divisions}
+        locations={locations}
+        users={systemUsers}
+        isAdmin={isAdmin}
+        onClose={() => {
+          setAssetDrawerOpen(false);
+          setSelectedAssetId(null);
+        }}
+        onSaved={refreshServerData}
+        onNotify={showToast}
+        onQuickMasterCreated={refreshServerData}
+      />
+
+      <ExcelImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImported={refreshServerData}
+        onNotify={showToast}
+      />
+
+      <ScheduleFormModal
+        isOpen={scheduleModalOpen}
+        schedule={editingSchedule}
+        assets={assets}
+        templates={templates}
+        users={systemUsers}
+        isAdmin={isAdmin}
+        onClose={() => {
+          setScheduleModalOpen(false);
+          setEditingSchedule(null);
+        }}
+        onSaved={refreshServerData}
+        onNotify={showToast}
+      />
+
+      <TemplateFormModal
+        isOpen={templateModalOpen}
+        template={editingTemplate}
+        assetTypes={assetTypes}
+        onClose={() => {
+          setTemplateModalOpen(false);
+          setEditingTemplate(null);
+        }}
+        onSaved={refreshServerData}
+        onNotify={showToast}
+      />
+
+      {/* Retire / Delete Confirmation Modals */}
+      {(retireTarget || deleteScheduleTarget || deleteTemplateTarget) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl shadow-xl p-5 space-y-4">
+            <div className="space-y-1">
+              <h4 className="font-heading font-bold text-base text-[var(--text-ink)]">
+                {t.projects.confirmDeleteTitle}
+              </h4>
+              <p className="text-xs text-[var(--text-ink2)]">
+                {retireTarget
+                  ? t.assets.retireAssetConfirm
+                  : deleteScheduleTarget
+                    ? `Delete schedule for ${deleteScheduleTarget.asset.assetCode}?`
+                    : `Delete template "${deleteTemplateTarget?.templateName}"?`}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRetireTarget(null);
+                  setDeleteScheduleTarget(null);
+                  setDeleteTemplateTarget(null);
+                }}
+                className="px-4 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-canvas)] text-xs font-semibold text-[var(--text-ink2)] cursor-pointer"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={busyAction}
+                onClick={
+                  retireTarget
+                    ? handleRetireConfirm
+                    : deleteScheduleTarget
+                      ? handleDeleteScheduleConfirm
+                      : handleDeleteTemplateConfirm
+                }
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[var(--err)] text-white dark:text-[#161A26] text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {busyAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{t.common.delete}</span>
               </button>
             </div>
           </div>

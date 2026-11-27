@@ -1,9 +1,13 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/auth";
+import { requireActiveSession } from "@/lib/api-auth";
 
 export async function GET(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const taskId = searchParams.get("taskId");
@@ -13,35 +17,31 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing taskId or supportTicketId" }, { status: 400 });
     }
 
-    const whereClause = taskId ? { taskId } : { supportTicketId };
+    const whereClause = taskId ? { taskId } : { supportTicketId: supportTicketId! };
 
     const comments = await prisma.comment.findMany({
       where: whereClause,
       include: {
         user: { select: { id: true, name: true, photo: true } },
-        replyTo: { include: { user: { select: { id: true, name: true } } } }
+        replyTo: { include: { user: { select: { id: true, name: true } } } },
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: "asc" },
     });
 
     return NextResponse.json(comments);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Failed to fetch comments:", error);
     return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    // 1. Get current logged in user from session
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const data = await req.json();
 
     if (!data.content && !data.attachment) {
@@ -52,23 +52,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing taskId or supportTicketId" }, { status: 400 });
     }
 
+    if (data.taskId) {
+      const targetTask = await prisma.task.findUnique({
+        where: { id: String(data.taskId) },
+        select: { id: true },
+      });
+      if (!targetTask) {
+        return NextResponse.json({ error: "Target task not found" }, { status: 404 });
+      }
+    }
+
+    if (data.supportTicketId) {
+      const targetTicket = await prisma.supportTicket.findUnique({
+        where: { id: String(data.supportTicketId) },
+        select: { id: true },
+      });
+      if (!targetTicket) {
+        return NextResponse.json({ error: "Target support ticket not found" }, { status: 404 });
+      }
+    }
+
+    if (data.replyToId) {
+      const targetReply = await prisma.comment.findUnique({
+        where: { id: String(data.replyToId) },
+        select: { id: true },
+      });
+      if (!targetReply) {
+        return NextResponse.json({ error: "Reply target comment not found" }, { status: 404 });
+      }
+    }
+
     const newComment = await prisma.comment.create({
       data: {
-        content: data.content || "",
-        attachment: data.attachment || null,
-        userId: session.userId as string,
+        content: typeof data.content === "string" ? data.content.trim() : "",
+        attachment: typeof data.attachment === "string" ? data.attachment.trim() || null : null,
+        attachmentKey:
+          typeof data.attachmentKey === "string" ? data.attachmentKey.trim() || null : null,
+        userId: auth.user.id,
         taskId: data.taskId || null,
         supportTicketId: data.supportTicketId || null,
         replyToId: data.replyToId || null,
       },
       include: {
         user: { select: { id: true, name: true, photo: true } },
-        replyTo: { include: { user: { select: { id: true, name: true } } } }
-      }
+        replyTo: { include: { user: { select: { id: true, name: true } } } },
+      },
     });
 
-    return NextResponse.json(newComment);
-  } catch (error: any) {
+    return NextResponse.json(newComment, { status: 201 });
+  } catch (error) {
     console.error("Failed to post comment:", error);
     return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });
   }

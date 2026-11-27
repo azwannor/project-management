@@ -1,129 +1,222 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, Headset, Settings, LogOut, Menu, X, Activity, Wrench } from "lucide-react";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import {
+  LayoutGrid,
+  FolderKanban,
+  Headset,
+  QrCode,
+  Wrench,
+  Settings,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+} from "lucide-react";
 import { Suspense, useState, useEffect } from "react";
+import { useI18n } from "@/i18n";
+import { useUiPref } from "@/lib/ui-prefs";
 
-function SidebarContent({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
+function SidebarContent({
+  isOpen,
+  setIsOpen,
+}: {
+  isOpen?: boolean;
+  setIsOpen?: (val: boolean) => void;
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { t } = useI18n();
+  const [collapsedPref, setCollapsedPref] = useUiPref("sidebar_collapsed", "false");
+  const isCollapsed = collapsedPref === "true";
 
-  // Close sidebar on route change on mobile
+  const toggleCollapse = () => {
+    setCollapsedPref(isCollapsed ? "false" : "true");
+  };
+
   useEffect(() => {
     if (setIsOpen) setIsOpen(false);
   }, [pathname, searchParams, setIsOpen]);
 
   const menuItems = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: Activity,
-    },
-    {
-      name: "Project Management",
-      href: "/projects",
-      icon: LayoutDashboard,
-    },
-    {
-      name: "Support & Operasional",
-      href: "/support",
-      icon: Headset,
-    },
-    {
-      name: "Maintenance",
-      href: "/maintenance",
-      icon: Wrench,
-    },
+    { key: "overview", name: t.nav.overview, href: "/dashboard", icon: LayoutGrid },
+    { key: "projects", name: t.nav.projects, href: "/projects", icon: FolderKanban },
+    { key: "support", name: t.nav.support, href: "/support", icon: Headset },
+    { key: "assets", name: t.nav.assets, href: "/maintenance", icon: QrCode },
+    { key: "maint", name: t.nav.maintenance, href: "/maintenance?tab=schedules", icon: Wrench },
+    { key: "settings", name: t.nav.settings, href: "/settings", icon: Settings },
   ];
+
+  const isNavActive = (item: (typeof menuItems)[number]) => {
+    if (item.key === "maint") {
+      return pathname.startsWith("/maintenance") && searchParams.get("tab") === "schedules";
+    }
+    if (item.key === "assets") {
+      return (
+        (pathname.startsWith("/maintenance") && searchParams.get("tab") !== "schedules") ||
+        pathname.startsWith("/assets")
+      );
+    }
+    return pathname.startsWith(item.href);
+  };
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
-        <div 
-          className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity" 
-          onClick={() => setIsOpen && setIsOpen(false)} 
+        <div
+          className="md:hidden fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity"
+          onClick={() => setIsOpen && setIsOpen(false)}
         />
       )}
 
-      {/* Sidebar Container */}
-      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 h-screen flex flex-col bg-white border-r border-slate-200 shrink-0 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} shadow-2xl md:shadow-none`}>
-        <div className="p-6 flex items-center justify-between border-b border-white/20">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 text-xs">
-              IT
+      {/* Desktop 240px (or 68px collapsed icon rail) & Tablet 68px Icon Rail */}
+      <aside
+        className={`no-print fixed md:relative inset-y-0 left-0 z-50 w-60 md:w-[68px] ${
+          isCollapsed ? "lg:w-[68px]" : "lg:w-60"
+        } h-screen flex flex-col bg-[var(--bg-surface)] border-r border-[var(--border-subtle)] shrink-0 transform transition-all duration-300 ease-in-out ${
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        {/* Desktop Collapse / Expand Rail Button */}
+        <button
+          type="button"
+          onClick={toggleCollapse}
+          aria-label={isCollapsed ? t.nav.expandMenu : t.nav.collapseMenu}
+          title={isCollapsed ? t.nav.expandMenu : t.nav.collapseMenu}
+          className="hidden lg:flex items-center justify-center absolute -right-3 top-[16px] w-6 h-6 rounded-full bg-[var(--bg-surface)] border border-[var(--border-strong)] shadow-sm text-[var(--text-ink2)] hover:text-[var(--brand)] hover:border-[var(--brand)] transition-colors z-50 cursor-pointer"
+        >
+          {isCollapsed ? (
+            <PanelLeftOpen className="w-3.5 h-3.5" />
+          ) : (
+            <PanelLeftClose className="w-3.5 h-3.5" />
+          )}
+        </button>
+
+        {/* Brand Header */}
+        <div
+          className={`h-14 px-4 md:px-0 ${
+            isCollapsed ? "lg:px-0 lg:justify-center" : "lg:px-5 lg:justify-between"
+          } flex items-center justify-between md:justify-center border-b border-[var(--border-subtle)] shrink-0`}
+        >
+          <Link href="/dashboard" className="flex items-center gap-2.5" title={t.common.appName}>
+            <Image
+              src="/brand/crown-rmp.png"
+              alt="Royal Medica"
+              width={28}
+              height={28}
+              className="w-7 h-7 object-contain shrink-0"
+              priority
+            />
+            <div
+              className={`md:hidden ${isCollapsed ? "lg:hidden" : "lg:flex"} flex flex-col leading-none`}
+            >
+              <span className="font-mono-code text-[9px] font-bold tracking-[0.22em] text-[var(--brand)]">
+                {t.common.brandTag}
+              </span>
+              <span className="font-heading text-[15px] font-bold tracking-tight text-[var(--text-ink)]">
+                {t.common.appName}
+              </span>
             </div>
-            <h2 className="font-bold text-gray-800 text-lg tracking-tight">IT Tracker</h2>
-          </div>
-          <button 
-            className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white/40 rounded-lg transition-colors"
+          </Link>
+          <button
+            className="md:hidden p-1.5 text-[var(--text-muted)] hover:text-[var(--text-ink)] rounded-lg"
             onClick={() => setIsOpen && setIsOpen(false)}
+            aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-      <nav className="flex-1 py-6 px-4 flex flex-col gap-1.5">
-        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">Main Menu</div>
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname.startsWith(item.href);
-          
-          return (
-            <div key={item.href}>
-              <Link
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
-                  isActive
-                    ? "bg-white/70 text-blue-800 shadow-sm border border-white/60 font-semibold"
-                    : "text-gray-600 hover:bg-white/40 hover:text-gray-800 font-medium"
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? "text-blue-700" : "text-gray-400"}`} />
-                <span className="text-sm">{item.name}</span>
-              </Link>
-              
-              {item.name === "Project Management" && isActive && (
-                <div className="ml-8 mt-1.5 space-y-1 border-l-2 border-blue-200/60 pl-3">
-                  <Link 
-                    href="/projects?module=project" 
-                    className={`block px-3 py-2 text-sm rounded-lg transition-all ${searchParams.get("module") !== "task" ? "bg-white/70 text-blue-800 font-bold shadow-sm" : "text-gray-500 hover:bg-white/30 hover:text-gray-700 font-medium"}`}
-                  >
-                    Project
-                  </Link>
-                  <Link 
-                    href="/projects?module=task" 
-                    className={`block px-3 py-2 text-sm rounded-lg transition-all ${searchParams.get("module") === "task" ? "bg-white/70 text-blue-800 font-bold shadow-sm" : "text-gray-500 hover:bg-white/30 hover:text-gray-700 font-medium"}`}
-                  >
-                    Task
-                  </Link>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
+        {/* Primary Navigation */}
+        <nav
+          className={`flex-1 py-4 px-3 md:px-2 ${
+            isCollapsed ? "lg:px-2" : "lg:px-3"
+          } flex flex-col gap-1 overflow-y-auto`}
+        >
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const active = isNavActive(item);
 
-      <div className="p-4 border-t border-white/20 space-y-1">
-        <UserMenu />
-      </div>
-    </aside>
+            return (
+              <div key={item.key}>
+                <Link
+                  href={item.href}
+                  title={item.name}
+                  className={`flex items-center md:justify-center ${
+                    isCollapsed ? "lg:justify-center lg:px-0" : "lg:justify-start lg:px-3"
+                  } gap-3 px-3 md:px-0 py-2.5 rounded-xl transition-colors text-[13px] ${
+                    active
+                      ? "bg-[var(--brand-tint)] text-[var(--brand)] border border-[var(--brand-stroke)] font-semibold"
+                      : "text-[var(--text-ink2)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-ink)] font-medium border border-transparent"
+                  }`}
+                >
+                  <Icon className="w-[18px] h-[18px] shrink-0" />
+                  <span
+                    className={`md:hidden ${isCollapsed ? "lg:hidden" : "lg:inline"} truncate`}
+                  >
+                    {item.name}
+                  </span>
+                </Link>
+
+                {item.key === "projects" && pathname.startsWith("/projects") && !isCollapsed && (
+                  <div className="hidden lg:block ml-7 mt-1 space-y-1 border-l border-[var(--border-subtle)] pl-3">
+                    <Link
+                      href="/projects?module=project"
+                      className={`block px-2.5 py-1.5 text-xs rounded-lg transition-colors ${
+                        searchParams.get("module") !== "task"
+                          ? "bg-[var(--brand-tint)] text-[var(--brand)] font-semibold"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-ink)]"
+                      }`}
+                    >
+                      {t.nav.projectsShort}
+                    </Link>
+                    <Link
+                      href="/projects?module=task"
+                      className={`block px-2.5 py-1.5 text-xs rounded-lg transition-colors ${
+                        searchParams.get("module") === "task"
+                          ? "bg-[var(--brand-tint)] text-[var(--brand)] font-semibold"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-ink)]"
+                      }`}
+                    >
+                      {t.nav.tasks}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Bottom User Profile & Sign Out */}
+        <div
+          className={`p-3 md:p-2 ${isCollapsed ? "lg:p-2" : "lg:p-3"} border-t border-[var(--border-subtle)]`}
+        >
+          <UserMenu isCollapsed={isCollapsed} />
+        </div>
+      </aside>
     </>
   );
 }
 
-import { useRouter } from 'next/navigation';
+interface SessionUser {
+  userId?: string;
+  name: string;
+  role: string;
+  photo?: string | null;
+}
 
-function UserMenu() {
-  const [user, setUser] = useState<any>(null);
+function UserMenu({ isCollapsed }: { isCollapsed: boolean }) {
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const router = useRouter();
-  
+  const { t } = useI18n();
+
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((data) => {
         if (data.user) setUser(data.user);
       })
       .catch(console.error);
@@ -131,69 +224,103 @@ function UserMenu() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/login');
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
       router.refresh();
     } catch (err) {
       console.error(err);
     }
   };
 
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "IT";
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {user && (
-        <div className="flex items-center gap-3 px-3 py-2 bg-white/50 rounded-xl border border-white/60 shadow-sm">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-100 flex items-center justify-center text-blue-600 font-bold text-sm overflow-hidden shrink-0">
-            {user.photo ? <img src={user.photo} alt={user.name} className="w-full h-full object-cover" /> : user.name.charAt(0)}
+        <Link
+          href="/settings"
+          title={user.name}
+          className={`flex items-center md:justify-center ${
+            isCollapsed
+              ? "lg:justify-center lg:px-1.5"
+              : "lg:justify-start lg:px-2.5"
+          } gap-2.5 px-2.5 md:px-1.5 py-2 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-subtle)] hover:border-[var(--brand-stroke)] transition-colors`}
+        >
+          <div className="w-8 h-8 rounded-full bg-[var(--brand)] text-white dark:text-[#161A26] flex items-center justify-center font-mono-code font-bold text-[11px] overflow-hidden shrink-0">
+            {user.photo ? (
+              <img src={user.photo} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              initials
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-gray-800 truncate">{user.name}</p>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{user.role}</p>
+          <div
+            className={`md:hidden ${isCollapsed ? "lg:hidden" : "lg:block"} flex-1 min-w-0`}
+          >
+            <p className="text-xs font-semibold text-[var(--text-ink)] truncate">{user.name}</p>
+            <p className="font-mono-code text-[9px] font-bold uppercase tracking-wider text-[var(--brand)] truncate">
+              {user.role}
+            </p>
+          </div>
+        </Link>
+      )}
+
+      {isConfirming ? (
+        <div className="p-2 bg-[var(--err-bg)] border border-[var(--err-stroke)] rounded-xl space-y-1.5">
+          <p
+            className={`text-[11px] font-semibold text-[var(--err)] text-center md:hidden ${
+              isCollapsed ? "lg:hidden" : "lg:block"
+            }`}
+          >
+            {t.auth.signOut}?
+          </p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={handleLogout}
+              className="flex-1 py-1 bg-[var(--err)] text-white dark:text-[#161A26] text-[11px] font-semibold rounded-lg"
+            >
+              {t.common.yes}
+            </button>
+            <button
+              onClick={() => setIsConfirming(false)}
+              className="flex-1 py-1 bg-[var(--bg-surface)] text-[var(--text-ink2)] text-[11px] font-semibold rounded-lg border border-[var(--border-subtle)]"
+            >
+              {t.common.no}
+            </button>
           </div>
         </div>
-      )}
-      <div className="space-y-1 relative">
-        <Link href="/settings" className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-gray-600 hover:bg-white/60 hover:text-gray-800 transition-all font-medium text-sm">
-          <Settings className="w-4 h-4 text-gray-400" />
-          Settings
-        </Link>
-        
-        {isConfirming ? (
-          <div className="absolute bottom-full left-0 w-full mb-2 p-3 bg-white border border-gray-200 shadow-xl rounded-xl z-50">
-            <p className="text-xs font-bold text-gray-800 mb-2 text-center">Yakin ingin logout?</p>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setIsConfirming(false)} 
-                className="flex-1 py-1.5 px-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition-colors"
-              >
-                Batal
-              </button>
-              <button 
-                onClick={handleLogout} 
-                className="flex-1 py-1.5 px-2 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors"
-              >
-                Ya, Logout
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <button 
-          onClick={() => setIsConfirming(true)} 
-          className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-red-500 hover:bg-red-50/80 hover:text-red-600 transition-all font-medium text-sm"
+      ) : (
+        <button
+          onClick={() => setIsConfirming(true)}
+          title={t.auth.signOut}
+          className={`w-full flex items-center md:justify-center ${
+            isCollapsed ? "lg:justify-center lg:px-0" : "lg:justify-start lg:px-3"
+          } gap-2.5 px-3 md:px-0 py-2 text-[var(--err)] hover:bg-[var(--err-bg)] rounded-xl transition-colors text-xs font-semibold cursor-pointer`}
         >
-          <LogOut className="w-4 h-4 opacity-80" />
-          Logout
+          <LogOut className="w-4 h-4 shrink-0" />
+          <span className={`md:hidden ${isCollapsed ? "lg:hidden" : "lg:inline"}`}>
+            {t.auth.signOut}
+          </span>
         </button>
-      </div>
+      )}
     </div>
   );
 }
 
-export default function Sidebar({ isOpen, setIsOpen }: { isOpen?: boolean, setIsOpen?: (val: boolean) => void }) {
+export default function Sidebar(props: { isOpen?: boolean; setIsOpen?: (val: boolean) => void }) {
   return (
-    <Suspense fallback={<div className="w-64 h-screen bg-white/20" />}>
-      <SidebarContent isOpen={isOpen} setIsOpen={setIsOpen} />
+    <Suspense
+      fallback={
+        <div className="hidden md:block w-[68px] lg:w-60 h-screen bg-[var(--bg-surface)] border-r border-[var(--border-subtle)]" />
+      }
+    >
+      <SidebarContent {...props} />
     </Suspense>
   );
 }

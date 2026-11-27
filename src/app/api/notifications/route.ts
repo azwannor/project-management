@@ -1,47 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { decrypt } from '@/lib/auth';
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireActiveSession } from "@/lib/api-auth";
 
 export async function GET() {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session')?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const notifications = await prisma.notification.findMany({
-      where: { userId: session.userId as string },
+      where: { userId: auth.user.id },
       orderBy: { createdAt: "desc" },
-      take: 50
+      take: 50,
     });
 
     return NextResponse.json(notifications);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Failed to fetch notifications:", error);
+    return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });
   }
 }
 
-export async function PATCH(request: NextRequest) {
+export async function PATCH() {
+  const auth = await requireActiveSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session')?.value;
-    const session = await decrypt(sessionCookie);
-
-    if (!session || !session.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     await prisma.notification.updateMany({
-      where: { userId: session.userId as string, isRead: false },
+      where: { userId: auth.user.id, isRead: false },
       data: { isRead: true },
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Failed to mark notifications read:", error);
+    return NextResponse.json({ error: "Failed to update notifications" }, { status: 500 });
   }
 }

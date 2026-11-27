@@ -1,58 +1,81 @@
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/auth";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
+import { requireActiveSession } from "@/lib/api-auth";
 import ProjectDashboardClient from "@/components/views/ProjectDashboardClient";
-import { Suspense } from "react";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get("session")?.value;
-  const session = await decrypt(sessionCookie);
-
-  if (!session || !session.userId) {
+  const auth = await requireActiveSession();
+  if (!auth) {
     redirect("/login");
   }
 
-  // Server-side data fetching for project tasks
-  const [projects, tasks, users, currentUser] = await Promise.all([
+  const [projects, tasks, users] = await Promise.all([
     prisma.project.findMany({
-      include: { tasks: true }
+      include: {
+        projectMembers: {
+          include: {
+            user: { select: { id: true, name: true, jobDesk: true, role: true } },
+          },
+        },
+        tasks: {
+          select: { id: true, status: true, parentId: true },
+        },
+      },
+      orderBy: { startDate: "asc" },
     }),
     prisma.task.findMany({
       where: {
-        projectId: { not: null }
+        projectId: { not: null },
       },
-      include: { 
-        user: true, 
-        project: true,
+      include: {
+        user: { select: { id: true, name: true, photo: true } },
+        project: { select: { id: true, name: true, status: true } },
+        executors: {
+          include: {
+            user: { select: { id: true, name: true, photo: true, jobDesk: true, role: true } },
+          },
+        },
+        timeLogs: {
+          include: {
+            user: { select: { id: true, name: true } },
+          },
+          orderBy: { startTime: "desc" },
+        },
         comments: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
         },
         commentReadStatuses: {
-          where: { userId: session.userId as string }
-        }
-      }
+          where: { userId: auth.user.id },
+        },
+      },
+      orderBy: [{ sortOrder: "asc" }, { startDate: "asc" }, { id: "asc" }],
     }),
     prisma.user.findMany({
-      orderBy: { name: 'asc' }
+      where: { isActive: true },
+      select: { id: true, name: true, role: true, jobDesk: true, photo: true },
+      orderBy: { name: "asc" },
     }),
-    prisma.user.findUnique({
-      where: { id: session.userId as string },
-      select: { id: true, name: true, photo: true }
-    })
   ]);
 
   const initialData = {
     projects,
     tasks,
     users,
-    currentUser
+    currentUser: {
+      id: auth.user.id,
+      name: auth.user.name,
+      role: auth.user.role,
+      photo: auth.user.photo,
+    },
+    generatedAtIso: new Date().toISOString(),
   };
 
   return (
-    <Suspense fallback={<div className="p-10 text-center">Loading dashboard...</div>}>
+    <Suspense fallback={<div className="p-8 text-xs text-[var(--text-muted)]">Loading...</div>}>
       <ProjectDashboardClient initialData={initialData} />
     </Suspense>
   );

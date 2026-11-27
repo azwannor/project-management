@@ -57,7 +57,7 @@ describe("Maintenance Module Critical Logic", () => {
         assetCode: "SRV-TEST",
         assetName: "Test Server",
         assetTypeId: testIds.assetType,
-        area: "Ruang Server",
+        location: "Ruang Server",
         status: "ACTIVE",
       }
     });
@@ -72,8 +72,8 @@ describe("Maintenance Module Critical Logic", () => {
         reminderOffsetDays: 3,
         checklistItems: {
           create: [
-            { id: "item-1", itemName: "Cek Suhu", order: 1, isRequired: true },
-            { id: "item-2", itemName: "Cek RAM", order: 2, isRequired: false },
+            { id: "item-1", itemText: "Cek Suhu", order: 1, isRequired: true },
+            { id: "item-2", itemText: "Cek RAM", order: 2, isRequired: false },
           ]
         }
       }
@@ -85,16 +85,14 @@ describe("Maintenance Module Critical Logic", () => {
   });
 
   async function cleanup() {
-    await prisma.checklistResult.deleteMany({ where: { log: { scheduleId: testIds.schedule } } });
-    await prisma.maintenanceLog.deleteMany({ where: { scheduleId: testIds.schedule } });
+    await prisma.checklistResult.deleteMany({ where: { log: { schedule: { assetId: testIds.asset } } } });
+    await prisma.maintenanceLog.deleteMany({ where: { schedule: { assetId: testIds.asset } } });
+    await prisma.maintenanceSchedule.deleteMany({ where: { assetId: testIds.asset } });
     await prisma.maintenanceSchedule.deleteMany({ where: { id: testIds.schedule } });
     await prisma.maintenanceTemplate.deleteMany({ where: { id: testIds.template } });
     await prisma.asset.deleteMany({ where: { id: testIds.asset } });
     await prisma.assetType.deleteMany({ where: { id: testIds.assetType } });
     await prisma.user.deleteMany({ where: { id: { in: [testIds.user1, testIds.user2] } } });
-    
-    // Cleanup generated schedules (yg ID nya random)
-    await prisma.maintenanceSchedule.deleteMany({ where: { assetId: testIds.asset } });
   }
 
   it("1. Auto-assignment by Area: Multiple executors matched", async () => {
@@ -103,7 +101,7 @@ describe("Maintenance Module Critical Logic", () => {
     // Logic assignment (sama seperti di POST /api/maintenance-schedules)
     const matchingExecutors = await prisma.user.findMany({
       where: {
-        handledAreas: { has: asset!.area },
+        handledAreas: { has: asset!.location! },
         role: "Staff",
       },
       select: { id: true },
@@ -146,19 +144,18 @@ describe("Maintenance Module Critical Logic", () => {
     const log = await prisma.maintenanceLog.create({
       data: {
         scheduleId: currentSchedule!.id,
-        executorId: testIds.user1,
+        executedById: testIds.user1,
         overallCondition: "BAIK",
         findings: "Aman",
-        results: {
+        checklistResults: {
           create: template!.checklistItems.map((item) => ({
-            checklistItemId: item.id,
-            snapshotItemName: item.itemName, // <--- Ini poin krusial snapshot
-            isPassed: true,
-            notes: "OK"
+            itemText: item.itemText, // Snapshot text saat eksekusi
+            checked: true,
+            note: "OK"
           }))
         }
       },
-      include: { results: true }
+      include: { checklistResults: true }
     });
 
     // Update status schedule yg lama
@@ -205,16 +202,17 @@ describe("Maintenance Module Critical Logic", () => {
     expect(daysDiff).toBe(30);
 
     // Verifikasi Snapshot: 
-    // Ubah template name/item
+    // Ubah template itemText
     await prisma.checklistItemMaster.update({
       where: { id: "item-1" },
-      data: { itemName: "Cek Suhu Berubah" }
+      data: { itemText: "Cek Suhu Berubah" }
     });
 
-    // Ambil log result
-    const resultItem1 = log.results.find(r => r.checklistItemId === "item-1");
-    // Snapshot name harus tetap yang lama
-    expect(resultItem1!.snapshotItemName).toBe("Cek Suhu");
+    // Ambil log result terbaru dari DB
+    const refreshedResults = await prisma.checklistResult.findMany({
+      where: { logId: log.id }
+    });
+    expect(refreshedResults.map((r) => r.itemText)).toContain("Cek Suhu");
   });
 
 });
